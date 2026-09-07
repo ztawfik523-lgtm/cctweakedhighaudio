@@ -214,7 +214,27 @@ Minecraft's own debug string reached `... + 8/8`; requests above eight produced 
 
 Evidence: `docs/test-batches/evidence/TEST-BATCH-003-NEOFORGE-21.1.247.md`.
 
-**Implication:** unmodified Minecraft-owned streaming on the tested runtime does not meet the project's 16-source stress target. This fact does **not** claim the OpenAL device itself has an eight-source limit, and it does not yet prove that a rebalanced reservation can supply 16.
+**Implication:** unmodified Minecraft-owned streaming on the tested runtime does not meet the project's 16-source stress target. This fact does **not** claim the OpenAL device itself has an eight-source limit; the separately verified Part A2 result below establishes what the accepted rebalance achieved on the measured runtime.
+
+### FACT-MC-005 — the conservative reservation rebalance repeatedly supplied 16 Minecraft-owned streaming channels on the baseline real client [VERIFIED exact runtime]
+
+On the real NeoForge 21.1.247 Windows/OpenAL Soft client, the accepted conservative reservation candidate reported:
+
+```text
+reportedChannelCount=255
+originalStatic=247
+originalStreaming=8
+newStatic=239
+newStreaming=16
+combinedPreserved=true
+rebalanceApplied=true
+```
+
+The user then obtained 4/4, 8/8, 12/12 and five separate 16/16 streaming allocations. Completed runs closed all allocated streams, including explicit-stop cycles. Minecraft's debug string also showed ordinary static-side activity while the streaming side was saturated, including `1/239 + 16/16` and `2/239 + 16/16` observations.
+
+Evidence: `docs/test-batches/evidence/TEST-BATCH-003-PARTA2-NEOFORGE-21.1.247.md`.
+
+**Implication:** on the measured runtime, HighAudio can meet its 16-stream stress target by rebalancing Minecraft's own reservation without increasing the combined 255-source budget or owning an additional raw-source pool. This does not guarantee the same layout on lower-capacity devices, long-media behavior, or exact SPR compatibility.
 
 ### FACT-AL-001 — OpenAL supports vector source start/pause [VERIFIED]
 
@@ -222,7 +242,7 @@ OpenAL exposes vector source operations including `alSourcePlayv` and `alSourceP
 
 Source: https://github.com/kcat/openal-soft/blob/master/include/AL/al.h
 
-**Implication:** atomic multi-source start is a promising primitive for tight local sync if Minecraft-owned channels can be safely prepared and their source IDs accessed.
+**Implication:** vector start is a valid low-level primitive for synchronized start of a prepared list of sources. EXP-003 separately verified its use over Minecraft-owned sources on the baseline real client.
 
 ### FACT-AL-002 — OpenAL source offsets exist [VERIFIED]
 
@@ -242,6 +262,40 @@ OpenAL Soft's example player uses source offset/queued-buffer timing together wi
 Source: https://github.com/kcat/openal-soft/blob/master/examples/alffplay.cpp
 
 **Implication:** synchronization/drift logic must not equate one raw OpenAL offset query with perfect audible global time.
+
+### FACT-AL-004 — vector start over Minecraft-owned sources measured zero relative sample-offset spread through 16 [VERIFIED exact runtime]
+
+In the real NeoForge 21.1.247 EXP-003 Part B diagnostic, ordinary Minecraft/high-level starting and the synchronized `alSourcePlayv` path were each measured for 2/4/8/16 sources. The complete comparison ran twice. Both methods measured zero relative `AL_SAMPLE_OFFSET` spread at the sampled start, t+2, t+5 and t+10 checkpoints through 16 sources.
+
+For the vector path, the diagnostic also recorded full 16/16 capture, `vectorError=0`, zero measured pre-pause preparation offset, zero post-rewind offset, and clean stream closure.
+
+Evidence: `docs/test-batches/evidence/TEST-BATCH-003-PARTB-NEOFORGE-21.1.247.md`.
+
+**Implication:** a narrow synchronized vector start over already Minecraft-owned sources is genuinely feasible on the baseline runtime. This evidence concerns initial start of the deterministic test streams and does not prove long-running drift correction or exact SPR behavior.
+
+### FACT-AL-005 — OpenAL Soft exposes an absolute device-clock scheduled-start model with atomic clock/offset measurements [VERIFIED specification + exact automatic target capability]
+
+`AL_SOFT_source_start_delay` defines `alSourcePlayAtTimeSOFT`/`alSourcePlayAtTimevSOFT` against an absolute device-clock time. A future-scheduled source is promoted to `AL_PLAYING` while actual playback waits for the target device time. `ALC_SOFT_device_clock` defines device clock and output latency in nanoseconds; `ALC_DEVICE_CLOCK_LATENCY_SOFT` measures those two atomically. `AL_SAMPLE_OFFSET_CLOCK_SOFT` returns a 32.32 fixed-point source sample offset and corresponding device-clock value measured atomically.
+
+Specifications:
+
+- https://openal-soft.org/openal-extensions/SOFT_source_start_delay.txt
+- https://openal-soft.org/openal-extensions/SOFT_device_clock.txt
+
+On the exact project target, automatic development clients for NeoForge 21.1.247 and 21.1.248 reported after Minecraft OpenAL initialization:
+
+```text
+sourceStartDelay=true
+sourceLatency=true
+deviceClock=true
+available=true
+```
+
+The strengthened scheduled timing candidate at `ecb6c9d8a787184033f08082f888a0283b1d6ec5` passed CI run `34121266402` on both target NeoForge versions, including bytecode/package audits that prohibit HighAudio source/device/context ownership calls.
+
+Evidence: `docs/test-batches/evidence/TEST-BATCH-003-TIMING-C-AUTOMATIC.md`.
+
+**Implication:** optional scheduled timing is technically feasible on the initialized target stack and the diagnostic clock/latency distinctions have a specification-backed basis. This automatic evidence does not prove end-to-end audible scheduled alignment on the user's physical output device or define the future server/session clock mapping.
 
 ## Sound Physics Remastered
 
@@ -297,10 +351,11 @@ Reference: https://javadoc.lwjgl.org/org/lwjgl/stb/STBVorbis.html
 The following are **not verified facts** and must not appear elsewhere as if they were:
 
 - HighAudio can definitely support 32 active sources.
-- 16 simultaneous long streaming speakers are guaranteed by Minecraft or by the proposed reservation rebalance.
-- the proposed EXP-003 reservation Mixin is compatible with SPR until the combined runtime gate passes.
+- 16 simultaneous long streaming speakers are guaranteed by Minecraft or by the accepted reservation rebalance on every device.
+- the accepted EXP-003 reservation Mixin is compatible with exact SPR 1.21.1-1.5.1 until the later combined runtime gate passes.
 - `PlayStreamingSourceEvent` alone gives every low-level OpenAL control we need on 21.1.247/248.
-- `alSourcePlayv` can be used after Minecraft/SPR setup with zero escaped samples and no lifecycle side effects.
+- the M3 `alSourcePlayv` result proves identical zero-skew/preparation behavior with exact SPR present or with production asynchronous decode/cache/network readiness.
+- automatic scheduled capability evidence proves physical-output media-zero alignment on a real device or solves cross-client/session clock mapping.
 - server real-time playback should or should not advance while the integrated game is paused.
 - speaker block position is sufficient durable identity across unload/break/replace.
 - one specific MP3 library has accurate enough seek/gapless semantics for the final design.
