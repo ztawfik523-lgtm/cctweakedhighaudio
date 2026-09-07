@@ -11,9 +11,9 @@ Severity and likelihood are preliminary until prototypes produce data.
 |---|---|---:|---:|---|
 | RISK-001 | HighAudio targets CC:T internal `SpeakerPeripheral`; exact implementation may change | High | Medium | EXP-001; isolate all CC:T internals; exact version pin |
 | RISK-002 | Base `SpeakerPeripheral` target also exposes methods on turtle/pocket speakers | Medium | High | EXP-001; explicit emitter-kind gating/product choice |
-| RISK-003 | Minecraft-owned `AudioStream` lifecycle cannot provide enough control for pause/seek/sync | High | Medium | EXP-002/003; narrow accessor; hybrid only if proven necessary |
-| RISK-004 | Minecraft streaming/static channel pools cap HighAudio earlier than expected | High | Medium | EXP-003 capacity measurement; static/streaming policy; conservative limit |
-| RISK-005 | Tight group synchronization cannot be achieved without breaking Minecraft/SPR lifecycle | High | Medium | EXP-003; measure vector-start candidate; do not promise sync target early |
+| RISK-003 | Minecraft-owned `AudioStream` lifecycle cannot provide enough control for pause/seek/sync | High | Medium | EXP-002/003; accepted narrow timing access; keep production controls session-driven |
+| RISK-004 | Minecraft streaming/static channel pools cap HighAudio earlier than expected | High | Medium | Measured 8-stream baseline; accepted total-preserving 16-stream rebalance; retain graceful limits |
+| RISK-005 | Tight group synchronization cannot be achieved without breaking Minecraft/SPR lifecycle | High | Medium | M3 vector-start evidence; avoid generalizing initial-start proof to production drift/SPR |
 | RISK-006 | Emitter identity cannot distinguish unload/reload from block destruction/replacement cleanly | Medium | Medium | EXP-004; avoid using native random source UUID as durable identity |
 | RISK-007 | Media clock semantics around pause/TPS freeze feel wrong or desynchronize clients | High | Medium | `MediaClock` abstraction; EXP-005; deliberate product choice |
 | RISK-008 | SPR performance or EFX ownership conflicts with many HighAudio sources | High | Medium | Minecraft-owned sources; exact-version SPR milestone; source budget benchmark |
@@ -76,7 +76,7 @@ Minecraft ownership is preferred for lifecycle/category/acoustics, but HighAudio
 - position measurement;
 - queued streaming control.
 
-If public `Channel` methods/events are insufficient, use the smallest accessor to the underlying OpenAL source. Avoid a second independent source manager unless EXP-003 demonstrates it is unavoidable.
+EXP-003 established that the renderer boundary does **not** require a second independent OpenAL source manager for the current capacity/initial-start questions. Keep Minecraft source/device lifecycle ownership and use only the narrow timing/measurement access already justified by evidence. Production pause/seek/session reconstruction still needs to be proven in its later authoritative-session milestones rather than inferred from the M3 start primitives.
 
 ---
 
@@ -84,15 +84,19 @@ If public `Channel` methods/events are insufficient, use the smallest accessor t
 
 Do not hardcode “32 sources”. Minecraft has separate static/streaming channel pools and other sounds compete with HighAudio.
 
-**Mitigation:** EXP-003, source-budget configuration, graceful refusal/voice policy, static-vs-streaming strategy driven by real pool data.
+EXP-003 measured the vanilla streaming reservation at 8 on the baseline runtime and repeatedly proved 16/16 after the accepted conservative rebalance, while preserving the measured combined source budget and observing static-side Minecraft activity during streaming saturation.
+
+**Mitigation:** retain the accepted total-preserving reservation policy, do not generalize the measured 255-source layout to every device, keep graceful refusal/voice policy for resource pressure, and drive later static-vs-streaming decisions from real content/cache/source budgets. Exact SPR performance remains a later dedicated gate.
 
 ---
 
 ## RISK-005 — sync promise exceeds implementation
 
-A common server tick is not sufficient evidence of perceptually tight sync. Network delivery, decoder readiness, Minecraft Channel creation, OpenAL queue state, and device latency all matter.
+A common server tick is not sufficient evidence of perceptually tight sync. Network delivery, decoder readiness, Minecraft Channel creation, OpenAL queue state, device latency, underruns, and long-running renderer drift all matter.
 
-**Mitigation:** no public sync-quality promise until objective EXP-003 measurements exist. Keep server semantic timeline independent from one client's local source offset.
+EXP-003 now provides objective initial-start evidence: ordinary/high-level and synchronized vector starts were measured through 16 already-ready synthetic streams, and the vector primitive is viable over Minecraft-owned sources. That closes the M3 architecture question but is not a production sync-quality guarantee for asynchronous real media or long-running playback.
+
+**Mitigation:** keep `immediate` and explicit `together` semantics distinct; preserve the server/session timeline independently from local OpenAL offsets; validate production readiness barriers, scheduled mapping if retained, drift/underrun correction, and exact SPR behavior in their later session/synchronization milestones before making broader sync-quality promises.
 
 ---
 
