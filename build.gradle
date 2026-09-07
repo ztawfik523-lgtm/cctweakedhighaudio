@@ -6,6 +6,7 @@ plugins {
 
 tasks.named('wrapper', Wrapper).configure {
     distributionType = Wrapper.DistributionType.BIN
+    distributionSha256Sum = '72f44c9f8ebcb1af43838f45ee5c4aa9c5444898b3468ab3f4af7b6076c5bc3f'
 }
 
 version = mod_version
