@@ -1,6 +1,6 @@
 # TEST-BATCH-001 — EXP-001 GenericSource speaker augmentation gate
 
-**Status:** PREPARED / NOT RUN  
+**Status:** IN PROGRESS — NeoForge 21.1.247 partial runtime evidence captured; remaining lifecycle checks + 21.1.248 manual subset pending  
 **Milestone:** MILESTONE-001  
 **Experiment:** EXP-001  
 **Branch:** `milestone-001-exp-001-genericsource`
@@ -23,18 +23,16 @@ The final pre-gate candidate must pass CI on both NeoForge 21.1.247 and 21.1.248
 - install the exact NeoForge version into a clean dedicated-server directory, copy the finished HighAudio JAR plus exact CC:T 1.120.0 runtime JAR into `mods/`, launch that installed server, and again prove registration, live-registry exposure, and normal ready state;
 - record the exact built JAR SHA-256.
 
-Latest completed code-candidate evidence before this checklist freeze:
+Latest frozen candidate evidence:
 
 ```text
-commit: 0b56a5a53934b5610ade5a12f6b9c226167b3690
-CI run: 34082473383
+commit: 93a72cbb13357cd9d9906478998604835e0931b0
+CI run: 34082746562
 NeoForge 21.1.247: PASS
 NeoForge 21.1.248: PASS
 JAR SHA-256 on both matrix legs:
 0d5478ad27f44b6bf19857372747ae337b0ccf40606ec5f9d3cde71a9014ee64
 ```
-
-Because this checklist document itself is build-triggering, use the newest green CI artifact from this branch for the manual batch and record its exact commit/JAR SHA before testing. Documentation-only changes should not change the JAR bytes, but the hash is still authoritative.
 
 ## Test program
 
@@ -63,6 +61,23 @@ Before running the gate, ensure CC:T's `disabled_generic_methods` setting is not
 7. **Pocket speaker** — if practical in the same session, repeat for a pocket computer with speaker upgrade.
 
 For every run, preserve corresponding server `[EXP-001] highAudioProbe ...` log lines where practical.
+
+### 2026-09-07 runtime evidence captured
+
+Detailed evidence is recorded in:
+
+`docs/test-batches/evidence/TEST-BATCH-001-NEOFORGE-21.1.247.md`
+
+Current 21.1.247 assessment:
+
+- **PASS:** real direct block speaker exposes/calls `highAudioProbe` and completes the native `playNote` / `playSound` / `playAudio` / `stop` sequence.
+- **PASS:** real wired remote speaker (`speaker_27`) exposes/calls `highAudioProbe` and completes the native sequence.
+- **PASS:** real turtle speaker exposes/calls `highAudioProbe` and completes the native sequence.
+- **PASS:** newly-created block/turtle speaker peripheral instances still receive the GenericSource method and complete the native sequence.
+- **PENDING:** the supplied logs do not prove the wired remote was the same physical speaker previously tested directly.
+- **PENDING:** the move-away/return attempt did not prove a real chunk unload/reconstruction; the original direct speaker retained the exact same Java object identity and CC:T native source UUID.
+- **PENDING:** pocket speaker exposure was not observed.
+- **AMBIGUOUS:** the supplied logs show peripheral recreation, but do not identify the exact user action which caused each recreation, so reboot/detach and break/re-place labels are not assigned without proof.
 
 ## NeoForge 21.1.248 — compatibility subset
 
