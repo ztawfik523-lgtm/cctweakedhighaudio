@@ -2,14 +2,14 @@
 
 High-quality, controllable, synchronized media playback through normal CC:Tweaked speakers.
 
-> **Status:** architecture/prototype phase. There is intentionally no production implementation yet.
+> **Status:** bootstrap/prototype phase. The NeoForge/CC:T build scaffold exists, but no HighAudio speaker/media feature is implemented yet.
 
 ## Fixed target
 
 - Minecraft **1.21.1**
 - Java **21**
 - CC:Tweaked **1.120.0**, exact source tag [`v1.21.1-1.120.0`](https://github.com/cc-tweaked/CC-Tweaked/tree/v1.21.1-1.120.0)
-- NeoForge **21.1.247** as the initial compile target; **21.1.247 and 21.1.248** must both be runtime-tested before claiming support
+- NeoForge **21.1.247** as the initial compile target; CI also builds **21.1.248**
 - Future Sound Physics Remastered compatibility target: **1.21.1-1.5.1**
 
 Do **not** silently substitute CC:Tweaked 1.120.2/current `main` or a different Minecraft/NeoForge line when making architecture claims.
@@ -33,9 +33,40 @@ The canonical order is:
 3. [`docs/PROTOTYPES.md`](docs/PROTOTYPES.md) — experiments required before assumptions become decisions.
 4. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — current system model, only as strong as the facts/ADRs it links to.
 5. [`docs/ROADMAP.md`](docs/ROADMAP.md) — proof-first implementation order and gates.
-6. [`docs/RISKS.md`](docs/RISKS.md) and [`docs/SOURCES.md`](docs/SOURCES.md) — known risks and source/provenance ledger.
+6. [`docs/TESTING.md`](docs/TESTING.md) — automatic-vs-manual test cadence and batched runtime-test policy.
+7. [`docs/RISKS.md`](docs/RISKS.md) and [`docs/SOURCES.md`](docs/SOURCES.md) — known risks and source/provenance ledger.
 
 **Do not code from old Deep Research prose alone.** If research text conflicts with a verified fact, an accepted ADR, or a completed prototype result, the fact/ADR/result wins.
+
+## Build scaffold
+
+The bootstrap uses the official NeoForge 1.21.1 NeoGradle/userdev style and CC:T's published Maven artifacts.
+
+Current baseline:
+
+```text
+Minecraft 1.21.1
+Java 21
+NeoForge 21.1.247
+CC:Tweaked 1.120.0
+```
+
+A local developer currently needs **Gradle 9.2.1** available on PATH:
+
+```text
+gradle build
+```
+
+A Gradle wrapper is intentionally not claimed yet: the repository-writing connector used for the bootstrap cannot safely copy the MDK's binary `gradle-wrapper.jar`. CI installs Gradle 9.2.1 explicitly instead of committing a broken half-wrapper. A standard wrapper can be generated later from a normal local checkout.
+
+GitHub Actions builds the project automatically against both:
+
+```text
+NeoForge 21.1.247
+NeoForge 21.1.248
+```
+
+MILESTONE-000 does not require a user-run Minecraft session; build compatibility is checked automatically. Manual Minecraft tests begin only when a runtime question actually needs them and are batched according to [`docs/TESTING.md`](docs/TESTING.md).
 
 ## Documentation status vocabulary
 
@@ -55,6 +86,7 @@ Stable IDs are used so future research/code reviews can search directly for a cl
 - `EXP-*` experiments
 - `RISK-*` risks
 - `MILESTONE-*` roadmap stages
+- `TEST-BATCH-*` consolidated user-run runtime sessions
 
 ## Current high-level architecture
 
@@ -90,7 +122,7 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the authoritative version
 
 ## First implementation rule
 
-The first code is **not** the full media system. The first three milestones are probes which can invalidate key assumptions:
+The first feature code is **not** the full media system. The first three milestones after bootstrap are probes which can invalidate key assumptions:
 
 - `EXP-001`: prove the CC:T speaker augmentation path without breaking native speaker behavior.
 - `EXP-002`: prove Minecraft-owned custom streaming audio and lifecycle recovery.
@@ -98,6 +130,14 @@ The first code is **not** the full media system. The first three milestones are 
 
 Only after those gates pass do we build content upload, sessions, codecs, caching, and production networking.
 
-## Name, mod id, package, and license
+## Provisional bootstrap identifiers and license metadata
 
-`HighAudio` is currently a working product name. The final mod id, Java package root, and project license are deliberately **not locked yet**. Third-party licensing/provenance constraints are tracked in [`docs/SOURCES.md`](docs/SOURCES.md).
+The scaffold currently needs concrete identifiers in order to compile:
+
+```text
+mod id: cctweakedhighaudio
+Java package: dev.ztawfik.cctweakedhighaudio
+metadata license: All Rights Reserved
+```
+
+These are **bootstrap values, not locked architecture/product decisions**. Before public release, the final project name/mod id/package/license must be reviewed together with the provenance and dependency constraints in [`docs/SOURCES.md`](docs/SOURCES.md).
