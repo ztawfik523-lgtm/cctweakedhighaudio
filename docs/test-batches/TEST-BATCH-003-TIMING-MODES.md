@@ -1,6 +1,6 @@
 # TEST-BATCH-003 timing-mode addendum
 
-**Status:** C CAPABILITY AUTO PASS — SCHEDULED TRIAL HARNESS BUILDING  
+**Status:** C CAPABILITY + SCHEDULED HARNESS AUTO PASS — REAL SCHEDULED PLAYBACK NOT RUN  
 **Milestone:** MILESTONE-003 / EXP-003  
 **Branch:** `milestone-003-exp-003-timing-modes`  
 **Decision:** `ADR-0010` Proposed
@@ -102,7 +102,27 @@ Automatic capability conclusion:
 - the device clock can be queried from Minecraft's sound thread;
 - no manual Minecraft launch was required to establish this capability boundary.
 
-## Scheduled trial harness — current work
+## Scheduled trial harness — AUTOMATIC PASS
+
+Harness code candidate:
+
+```text
+dc2fbaad0f383bbbbe9d17350c003b4e0a53a62f
+```
+
+CI run:
+
+```text
+34115260138
+```
+
+Both NeoForge 21.1.247 and 21.1.248 passed compilation/package checks, real client sound-engine initialization, accepted M1 server regression, packaged-JAR dedicated-server startup, and artifact upload with the diagnostic scheduled-start harness present.
+
+Both matrix artifacts produced byte-identical HighAudio JARs:
+
+```text
+SHA-256 31829658ff85ad9153cd8a807d14a9520f331ff2297a59fa51ef339bcab3abba
+```
 
 The branch now includes diagnostic-only `Exp3ScheduledSound` / `Exp3ScheduledController` code. It reuses Minecraft-owned channels and the same 100 ms silent-preroll PCM used by the earlier vector experiment, pauses/rewinds each captured source, then calls the capability-gated device-clock scheduled-start primitive once the required group is ready.
 
@@ -115,7 +135,32 @@ The diagnostic records:
 - current device clock and target-minus-current-clock delta;
 - natural/explicit cleanup.
 
+Direct bytecode inspection of the packaged candidate found the expected timing operations:
+
+```text
+AL10.alSourcePlayv
+SOFTSourceStartDelay.alSourcePlayAtTimevSOFT
+ALC_SOFT_device_clock
+```
+
+and none of the forbidden ownership operations:
+
+```text
+alGenSources
+alDeleteSources
+alcOpenDevice
+alcCloseDevice
+alcCreateContext
+alcDestroyContext
+```
+
+Therefore the implementation remains timing control over Minecraft-owned sources, not a second OpenAL engine.
+
 The diagnostic command is an EXP-003 implementation hook only. It does **not** make scheduled playback the default and does not define the production Lua API.
+
+Canonical automatic evidence:
+
+`docs/test-batches/evidence/TEST-BATCH-003-TIMING-C-AUTOMATIC.md`
 
 ## Semantics carried forward
 
@@ -129,4 +174,4 @@ The diagnostic command is an EXP-003 implementation hook only. It does **not** m
 
 ## Minimum-manual-testing rule
 
-No standalone user launch is justified merely to re-check C capability. Scheduled playback should be folded into a later consolidated M3 runtime gate only if real-device behavior remains architecture-blocking after automatic validation. A standalone capability-discovery launch is explicitly disallowed by `docs/TESTING.md`'s minimum-manual-testing policy.
+No standalone user launch is justified merely to re-check C capability. Real scheduled-source behavior should be folded into a later consolidated M3 runtime gate only if it remains architecture-blocking after the rest of the automatic work is complete. A standalone capability-discovery launch is explicitly disallowed by `docs/TESTING.md`'s minimum-manual-testing policy.
