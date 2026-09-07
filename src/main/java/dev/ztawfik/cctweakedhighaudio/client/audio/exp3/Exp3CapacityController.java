@@ -71,9 +71,7 @@ public final class Exp3CapacityController {
     }
 
     public static String stop() {
-        if (sounds.isEmpty()) return "EXP-003: no active capacity probe";
-        Minecraft.getInstance().getSoundManager().stop(Exp3CapacitySound.class.cast(sounds.getFirst()));
-        // Stop every sound individually: SoundManager has no class-filtered stop operation.
+        if (sounds.isEmpty()) return "EXP-003: no capacity probe state";
         for (var sound : sounds) Minecraft.getInstance().getSoundManager().stop(sound);
         lastOutcome = "stop-requested";
         HighAudio.LOGGER.info("[EXP-003] capacity stop requested requested={} captures={}", requestedCount, captures);
@@ -87,7 +85,7 @@ public final class Exp3CapacityController {
             return;
         }
 
-        captures++;
+        if (!channels.containsKey(sound)) captures++;
         channels.put(sound, event.getChannel());
         lastOutcome = "channel-captured:" + captures + "/" + requestedCount;
 
@@ -135,7 +133,6 @@ public final class Exp3CapacityController {
             finalLogged = true;
             logSnapshot("final");
             lastOutcome = "finished:" + captures + "/" + requestedCount + " captured";
-            clearStateOnly();
         }
     }
 
@@ -145,6 +142,7 @@ public final class Exp3CapacityController {
             + ", active=" + activeSoundCount()
             + ", runningChannels=" + runningChannelCount()
             + ", stoppedChannels=" + stoppedChannelCount()
+            + ", closedStreams=" + closedStreamCount()
             + ", engineGeneration=" + engineGeneration
             + ", last=" + lastOutcome
             + ", soundDebug=" + safeDebugString();
