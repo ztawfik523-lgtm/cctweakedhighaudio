@@ -1,6 +1,6 @@
 # ADR-0009 — Rebalance Minecraft-owned streaming reservation
 
-**Status:** Proposed — selected for EXP-003 Part A2, not yet accepted for production  
+**Status:** Proposed — automatic EXP-003 Part A2 PASS; manual 16-channel + SPR coexistence still required  
 **Date:** 2026-09-07  
 **Related:** ADR-0004, EXP-003, RISK-004, RISK-005, RISK-008
 
@@ -23,7 +23,7 @@ Before introducing a second static-buffer backend or independent raw OpenAL owne
 - never increase the total reservation in this experiment;
 - never create/delete independent HighAudio OpenAL sources.
 
-On the measured runtime the expected transformation is `247 static + 8 streaming -> 239 static + 16 streaming`. Those numbers are runtime evidence, not universal constants; the implementation must derive the original reservation and preserve its combined total.
+On the measured 255-channel runtime the intended transformation is `247 static + 8 streaming -> 239 static + 16 streaming`. Those numbers are runtime evidence, not universal constants; the implementation derives the original reservation and preserves its combined total.
 
 ## Why this candidate is first
 
@@ -62,15 +62,44 @@ Not allowed:
 - codecs, media upload, network/session/sync production code;
 - claiming SPR compatibility before the combined runtime test.
 
+## Automatic prototype evidence
+
+Frozen automatic candidate:
+
+```text
+code/CI commit:    fc4c63efc5377700d71a78683cd123dc60b7d635
+CI run:            34102697796
+NeoForge 21.1.247: PASS
+NeoForge 21.1.248: PASS
+JAR SHA-256 on both matrix legs:
+6a9e1eeb548b7f2b3b985f3357355510d5e8dfcbbb4319d1fbce6c11c0dabe96
+```
+
+Both matrix JARs are byte-identical. Exact development-client sound-engine initialization on `.247` and `.248` logged:
+
+```text
+reportedChannelCount=255
+originalStatic=247
+originalStreaming=8
+newStatic=239
+newStreaming=16
+combinedPreserved=true
+targetStreaming=16
+```
+
+The client smoke used OpenAL Soft `No Output`; OpenAL initialized successfully and Minecraft's sound engine started after the rebalance. Packaged-JAR dedicated-server startup passed on both target versions. Bytecode/symbol inspection found no HighAudio raw source creation/deletion in the reservation Mixin.
+
+This proves that the exact target builds can apply the narrow reservation transform and preserve the combined policy budget. It does **not** yet prove that the user's real audio device will allocate/play 16 HighAudio streams, nor does it prove SPR coexistence.
+
 ## Acceptance criteria
 
 ADR-0009 may move from Proposed to Accepted only if EXP-003 Part A2 proves:
 
-1. the exact `.247` and `.248` candidate builds and starts cleanly;
-2. the runtime logs show the combined reservation is preserved;
-3. `capacity 16` obtains 16 unique Minecraft-owned streaming channels with SPR absent;
-4. cleanup and F3+T/device reload recreate the intended reservation cleanly;
-5. a short SPR 1.5.1 coexistence run has no Mixin/OpenAL conflict and still obtains the required channels;
-6. normal Minecraft/CC:T sound behavior is not obviously regressed in the targeted checks.
+1. the exact `.247` and `.248` candidate builds and starts cleanly — **PASS**;
+2. the automatic runtime logs show the combined reservation is preserved — **PASS**;
+3. `capacity 16` obtains 16 unique Minecraft-owned streaming channels with SPR absent — **NOT RUN**;
+4. cleanup and F3+T/device reload recreate the intended reservation cleanly — **NOT RUN on real client**;
+5. a short SPR 1.5.1 coexistence run has no Mixin/OpenAL conflict and still obtains the required channels — **NOT RUN**;
+6. normal Minecraft/CC:T sound behavior is not obviously regressed in the targeted checks — **automatic server/M1 regressions PASS; real client coexistence still pending**.
 
-If any of these fail, keep ADR-0009 Proposed/Rejected and return to the documented alternative set rather than silently broadening the patch.
+If any remaining criterion fails, keep ADR-0009 Proposed/Rejected and return to the documented alternative set rather than silently broadening the patch.
