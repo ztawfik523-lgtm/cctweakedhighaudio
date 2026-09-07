@@ -16,5 +16,6 @@ public final class Exp3ClientModEvents {
     public static void onSoundEngineLoad(SoundEngineLoadEvent event) {
         Exp3CapacityController.onSoundEngineLoad(event);
         Exp3SyncController.onSoundEngineLoad(event);
+        Exp3TimedStartDiagnostics.onSoundEngineLoad(event);
     }
 }
