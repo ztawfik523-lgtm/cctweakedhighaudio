@@ -13,6 +13,9 @@ description='''
 High-quality, controllable media playback through normal CC:Tweaked speakers.
 '''
 
+[[mixins]]
+config="cctweakedhighaudio.mixins.json"
+
 [[dependencies.${mod_id}]]
 modId="neoforge"
 type="required"
