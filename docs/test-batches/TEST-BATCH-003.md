@@ -1,11 +1,11 @@
 # TEST-BATCH-003 — EXP-003 capacity and synchronization proof
 
-**Status:** PART A READY — re-audited exact automatic candidate PASS; manual runtime NOT RUN  
+**Status:** PART A BASELINE PASS — vanilla streaming cap measured at 8; PART A2 REBALANCE PROTOTYPE NEXT  
 **Milestone:** MILESTONE-003  
 **Experiment:** EXP-003  
-**Branch:** `milestone-003-exp-003-capacity-sync`
+**Branch:** `milestone-003-exp-003-capacity-sync-rebalance`
 
-This milestone remains proof-first. Do not add production sessions, media upload, codecs, or a broad raw-OpenAL manager while source capacity and synchronization are still unmeasured.
+This milestone remains proof-first. Do not add production sessions, media upload, codecs, or a broad raw-OpenAL manager while source capacity and synchronization are still unresolved.
 
 ## Previous Part A candidate — superseded before manual test
 
@@ -43,109 +43,145 @@ Automatic evidence on both exact target NeoForge versions passed:
 
 The two matrix artifacts produced byte-identical HighAudio JARs with the SHA-256 above. Direct artifact inspection additionally confirmed the EXP-003 classes contain no raw LWJGL OpenAL/source-control symbols and no `Channel.stopped()` call.
 
-## Part A — Minecraft-owned streaming capacity
+## Part A — Minecraft-owned streaming capacity — PASS
 
-Use only the frozen strengthened candidate above. Keep Sound Physics Remastered absent for the initial baseline.
-
-Baseline commands:
+Real NeoForge 21.1.247 client evidence was collected with SPR absent. The strengthened probe was run for requested counts:
 
 ```text
-/highaudio_exp3 capacity 1
-/highaudio_exp3 capacity 4
+1, 1, 2, 4, 6, 8, 10, 12, 16
+```
+
+Measured result:
+
+| Requested | Unique channel captures | Active sounds | Minecraft debug streaming side |
+|---:|---:|---:|---|
+| 1 | 1 | 1 | `1/8` |
+| 1 | 1 | 1 | `1/8` |
+| 2 | 2 | 2 | `2/8` |
+| 4 | 4 | 4 | `4/8` |
+| 6 | 6 | 6 | `6/8` |
+| 8 | 8 | 8 | `8/8` |
+| 10 | 8 | 8 | `8/8` |
+| 12 | 8 | 8 | `8/8` |
+| 16 | 8 | 8 | `8/8` |
+
+Therefore the tested vanilla Minecraft runtime has a **measured streaming reservation/counter limit of 8 channels**. This is not an OpenAL hardware maximum claim.
+
+Evidence: `docs/test-batches/evidence/TEST-BATCH-003-NEOFORGE-21.1.247.md`.
+
+### Diagnostics validated by the manual run
+
+- each real `PlayStreamingSourceEvent` capture corresponds to an allocated/started Minecraft streaming `Channel`;
+- all captures arrived from the `Sound engine` thread;
+- counts remained stable at t+5/t+20/t+40 snapshots;
+- finalization waited for 10 consecutive inactive client ticks;
+- every actually allocated stream closed cleanly;
+- attempts to start the next count too early were refused rather than contaminating the measurement;
+- no ninth streaming capture appeared for 10/12/16 requests;
+- `heapDeltaBytes` remains diagnostic only and is not per-channel memory cost.
+
+### Part A conclusion
+
+Vanilla Minecraft-owned streaming is **insufficient for the project's 16-speaker stress target** without changing the allocation policy. The experiment succeeded because it located the actual runtime boundary cleanly.
+
+Do not respond to this result by immediately building an independent raw-OpenAL source manager.
+
+## Re-evaluation after Part A
+
+Source research and exact runtime evidence now support a narrower fourth candidate before the earlier A/B/C backend fork: **rebalance Minecraft's own static/streaming source reservation while keeping Minecraft ownership and the existing total source budget**.
+
+Relevant verified/rechecked points:
+
+- Minecraft 1.21.1 `Library` owns distinct static and streaming channel counters/pools and selects between them on channel acquisition.
+- The observed runtime debug string reached `... + 8/8` exactly when allocation stopped.
+- Existing source-limit implementations for the 1.21 family modify the two Minecraft channel-pool sizes and expose the streaming reservation separately; this demonstrates feasibility of the mechanism, but HighAudio will not copy their broader total-source-limit behavior.
+- HighAudio already proved `SoundInstance + AudioStream + SoundManager` playback and lifecycle in EXP-002.
+- SPR 1.21.1 hooks Minecraft `Library`/`SoundEngine`/`Channel`, including `Channel.play()` and the Minecraft-owned source id. Keeping Minecraft-owned channels therefore preserves the integration surface SPR already expects better than independent raw OpenAL ownership would.
+
+### Important correction to earlier interpretation
+
+Do **not** assume `247 + 8` means a fixed 255-source hardware pool in every environment. Minecraft derives policy limits from the device-reported mono-source count and applies its own clamps. The observed runtime has `247` static slots plus `8` streaming slots, but the Part A2 prototype must preserve the runtime's existing combined reservation rather than hard-code a universal 239/16 split.
+
+## Part A2 — streaming reservation rebalance
+
+### Goal
+
+Test whether HighAudio can meet the 16-stream stress target by changing only Minecraft's own reservation policy while preserving:
+
+- Minecraft `Library`/`Channel` ownership;
+- `SoundInstance + AudioStream + SoundManager` playback;
+- ordinary category/position/pause/reload semantics;
+- the runtime's existing combined static+streaming reservation;
+- no independent `alGenSources` ownership in HighAudio.
+
+### Prototype rule
+
+The prototype may contain one narrow client-side Minecraft-audio Mixin/access patch localized under an EXP-003 package. It must **not**:
+
+- raise the total source budget;
+- probe/generate additional raw OpenAL sources;
+- create a HighAudio-owned source manager;
+- alter CC:T speaker internals;
+- add codecs/media/session/network behavior.
+
+The intended policy is conceptually:
+
+```text
+original static + original streaming = preserved combined reservation
+new streaming = min(16, combined reservation - safe static floor)
+new static    = combined reservation - new streaming
+```
+
+On the measured runtime this is expected to transform `247 + 8` into `239 + 16`, but the implementation must derive the values from the runtime rather than assuming those constants globally.
+
+### Automatic gate before another manual launch
+
+The Part A2 candidate must prove in CI/code inspection that:
+
+- only the intended Minecraft audio initialization boundary is transformed;
+- the Mixin applies against NeoForge 21.1.247 and 21.1.248 development runtime;
+- packaged-JAR dedicated-server startup remains clean/client-only;
+- M1 GenericSource regression checks remain intact;
+- M2/M3 playback classes remain packaged;
+- no raw `alGenSources`/`alDeleteSources` ownership is introduced;
+- diagnostic logging records original and rebalanced static/streaming limits on every sound-engine load/reload.
+
+### Manual Part A2 acceptance evidence
+
+With SPR absent first:
+
+```text
 /highaudio_exp3 capacity 8
+wait for final
 /highaudio_exp3 capacity 16
-/highaudio_exp3 status
-/highaudio_exp3 stop
+wait for final
 ```
 
-The command accepts **any integer from 1 through 16**. The canonical first pass remains 1, 4, 8, and 16; intermediate values exist only to refine the threshold in the same session if 16 does not fully allocate.
-
-Each capacity run:
-
-- creates the requested number of ordinary Minecraft-owned positional streaming `SoundInstance`s;
-- keeps them close to the listener and at low non-zero volume so Minecraft can allocate real channels;
-- uses independent `AudioStream` cursor/close state while all instances share one immutable generated PCM backing array;
-- prewarms that shared PCM before the per-run heap baseline;
-- captures the existence of each real `Channel` only through `PlayStreamingSourceEvent`;
-- records requested/captured/active/closed-stream counts;
-- records `SoundManager.getDebugString()` so Minecraft's own source-pool view is preserved;
-- records an approximate whole-probe JVM heap delta;
-- does not access raw OpenAL source ids.
-
-NeoForge posts `PlayStreamingSourceEvent` only after the Minecraft-owned channel has had the stream attached and `channel.play()` invoked. Therefore a unique capture is evidence of a real allocated/started streaming channel, not merely a `SoundManager.play()` request.
-
-### Threading boundary
-
-The event is delivered on Minecraft's sound thread. The strengthened probe does not mutate ordinary render-thread measurement collections from that callback and does not call `Channel.stopped()` from the render thread.
-
-Instead:
+Expected success evidence:
 
 ```text
-sound thread: PlayStreamingSourceEvent
-  -> enqueue immutable run/sound/channel-identity diagnostic record
-render thread: client tick/status
-  -> drain ConcurrentLinkedQueue
-  -> validate run token / reject stale event
-  -> update capture counters
-  -> query SoundManager.isActive(sound), stream closure, and SoundManager.getDebugString()
+rebalance originalStatic=... originalStreaming=8
+rebalance newStatic=... newStreaming=16
+capacity requested=16
+captures=16
+activeSounds=16
+soundDebug=... + 16/16
 ```
 
-The channel identity hash is diagnostic only. Part A intentionally does not use the underlying Channel/OpenAL object for control or renderer-position measurement.
+Then perform one short SPR-on repeat only after the clean baseline proves 16 allocation. Required SPR-on checks:
 
-### Important interpretation
+- no Mixin application conflict;
+- 16 Minecraft-owned streaming channels still allocate;
+- HighAudio channels continue through Minecraft `Channel.play()`;
+- no HighAudio/SPR/OpenAL error;
+- normal Minecraft sounds still play;
+- F3+T/device sound-engine rebuild re-applies the reservation and returns to a clean state.
 
-This experiment establishes a **conservative HighAudio streaming limit up to the project's 16-source stress target**. It does not claim to discover the device's absolute maximum if 16 succeeds.
-
-- If 16/16 unique captures are observed and the 16 sounds remain active normally, the tested runtime supports **at least 16** concurrent HighAudio streaming channels under those conditions. That is enough to satisfy the current product stress target, but it is not proof that 16 is Minecraft/OpenAL's maximum.
-- If 16 does not fully allocate, use intermediate counts in the same session to locate the highest reliable count at or below 16.
-- Do not infer the supported source budget from raw OpenAL hardware maximum alone.
-- `heapDeltaBytes` includes ordinary JVM/GC and buffer activity; it is an end-to-end observation, **not** per-channel memory cost.
-
-### Sequencing rule
-
-The strengthened probe refuses a new capacity run until the previous one has produced `capacity snapshot phase=final`. Finalization requires 10 consecutive client ticks with all probe sounds inactive, giving asynchronous sound-thread delivery/release a short grace window before another run is allowed.
-
-After each command, wait for the final snapshot before starting the next count. `/highaudio_exp3 status` reports `finalized=true` for a completed run.
-
-### Consolidated client procedure
-
-One Minecraft launch is enough.
-
-1. Enter a world with SPR absent and normal master/Records volume above zero.
-2. Avoid known long-running streaming audio during the baseline (for example CC:T `playAudio` or music/record playback) so the baseline measures HighAudio against a quiet streaming pool.
-3. Run `capacity 1`; wait for `phase=final`.
-4. Run `capacity 4`; wait for `phase=final`.
-5. Run `capacity 8`; wait for `phase=final`.
-6. Run `capacity 16`; wait for `phase=final`.
-7. If 16 is short of 16 captures, refine with intermediate counts (for example 12, then narrow further) while staying in the same launch.
-8. Optional coexistence check: during a second high-count run, start a known **streaming** competitor such as CC:T `playAudio` if convenient. This tests streaming-pool contention. A normal short/static Minecraft SFX is still useful for general coexistence but does not by itself test streaming-pool headroom.
-9. Run `/highaudio_exp3 status` after the final run.
-10. Preserve `latest.log` and `debug.log`.
-
-No need to manually count log lines. The instrumentation records snapshots at roughly 5, 20, and 40 client ticks and the final state.
-
-### Part A evidence to preserve
-
-For each count:
-
-- `capacity requested=... runToken=...`;
-- all unique `capacity channel captured ... captures=X/N` lines;
-- `eventThread=...` on capture diagnostics;
-- `capacity snapshot phase=t+5ticks`;
-- `capacity snapshot phase=t+20ticks`;
-- `capacity snapshot phase=t+40ticks`;
-- `capacity snapshot phase=final`;
-- `soundDebug=...`;
-- active/closed-stream counts;
-- any Minecraft/OpenAL acquisition warning or voice stealing.
-
-A short SPR-on capacity comparison belongs after the clean no-SPR baseline and does not replace the later MILESTONE-010 correctness work.
+The SPR-on comparison is a capacity/coexistence proof, not the final MILESTONE-010 SPR correctness gate.
 
 ## Part B — synchronization boundary
 
-Do not implement a broad low-level backend before Part A evidence is understood.
-
-The meaningful candidates remain:
+Part B remains unresolved. Do not choose a synchronization architecture until Part A2 either succeeds or fails.
 
 ### Option A — pure Minecraft/high-level scheduling
 
@@ -180,17 +216,19 @@ Pros:
 Cons:
 
 - duplicates Minecraft source allocation/lifecycle/category/reload/world cleanup responsibilities;
-- highest risk for SPR and source-pool coexistence.
+- bypasses the normal Minecraft-owned `Channel.play()` integration surface SPR already hooks;
+- highest source-pool coexistence and compatibility risk.
 
-This remains a fallback only if A and B fail experimentally.
+This remains a fallback only if Minecraft-owned approaches fail experimentally.
 
 ## GATE-003
 
 Pass only when:
 
-- real source/channel capacity is measured well enough to set a conservative provisional limit for the intended product target;
+- real vanilla source/channel capacity is preserved as measured evidence;
+- the 16-source product target is either met through a proven Minecraft-owned policy or reduced explicitly based on evidence;
 - one synchronization mechanism is selected from measured results rather than preference;
-- start skew is measured for 2/4/8/16 sources;
+- start skew is measured for the supported source counts;
 - required private/OpenAL access, if any, is precisely scoped;
 - preparation leak, pause/resume, and renderer-offset behavior are documented;
 - an alternative is documented if atomic vector start is not reliable through Minecraft ownership.
