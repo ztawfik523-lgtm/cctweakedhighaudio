@@ -13,6 +13,7 @@ The authoritative information is intentionally split by **kind of knowledge**:
 
 | Need | Canonical file |
 |---|---|
+| What should a new engineering chat read first? | [`HANDOFF.md`](HANDOFF.md) |
 | What is proven about exact versions? | [`VERIFIED-FACTS.md`](VERIFIED-FACTS.md) |
 | What architecture are we currently building? | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
 | Why did we make an important choice? | [`decisions/`](decisions/) |
