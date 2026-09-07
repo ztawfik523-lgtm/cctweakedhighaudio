@@ -21,11 +21,12 @@ Statuses follow a small Nygard-style vocabulary:
 | [ADR-0001](ADR-0001-cc-t-required-single-mod.md) | Accepted | CC:T 1.120.0 is mandatory for v1; ship one CC:T-focused NeoForge mod rather than a standalone audio framework. |
 | [ADR-0002](ADR-0002-localize-cct-internals.md) | Accepted | Keep CC:T implementation internals confined to a narrow integration layer. |
 | [ADR-0003](ADR-0003-additive-speakerperipheral-mixin.md) | Superseded | Additive SpeakerPeripheral Mixin was automatically viable but replaced before the manual gate by ADR-0008. |
-| [ADR-0004](ADR-0004-minecraft-owned-audio.md) | Proposed | Let Minecraft own SoundInstance/AudioStream/Channel; accept only after EXP-002/003. |
+| [ADR-0004](ADR-0004-minecraft-owned-audio.md) | Proposed | Let Minecraft own SoundInstance/AudioStream/Channel; EXP-002 validated playback/lifecycle, while EXP-003 still must resolve capacity policy and synchronization. |
 | [ADR-0005](ADR-0005-server-authoritative-sessions.md) | Accepted | Server owns semantic playback state/timeline; clients own disposable rendering state. |
 | [ADR-0006](ADR-0006-content-addressed-media.md) | Accepted | Finite media is identified by SHA-256 of original bytes and transferred/cached by ContentId. |
 | [ADR-0007](ADR-0007-separate-content-and-session-protocol.md) | Accepted | Large content transfer and session/control state are separate protocol concerns. |
-| [ADR-0008](ADR-0008-targeted-speaker-genericsource.md) | Proposed | Add HighAudio Lua methods through a GenericSource targeted at exact CC:T 1.120.0 SpeakerPeripheral; accept only after EXP-001. |
+| [ADR-0008](ADR-0008-targeted-speaker-genericsource.md) | Accepted | Add HighAudio Lua methods through a GenericSource targeted at exact CC:T 1.120.0 SpeakerPeripheral; EXP-001/GATE-001 passed. |
+| [ADR-0009](ADR-0009-rebalance-minecraft-streaming-reservation.md) | Proposed | Before abandoning Minecraft ownership, test rebalancing the existing Minecraft static/streaming reservation so 16 streaming slots can be available without raising the total source budget. |
 
 ## Decisions deliberately not made yet
 
