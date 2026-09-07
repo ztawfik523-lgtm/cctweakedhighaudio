@@ -7,6 +7,7 @@ import org.lwjgl.openal.AL;
 import org.lwjgl.openal.AL10;
 import org.lwjgl.openal.ALC10;
 import org.lwjgl.openal.SOFTDeviceClock;
+import org.lwjgl.openal.SOFTSourceLatency;
 import org.lwjgl.openal.SOFTSourceStartDelay;
 
 /**
@@ -16,6 +17,8 @@ import org.lwjgl.openal.SOFTSourceStartDelay;
  * deletes, or owns an OpenAL source/device/context.</p>
  */
 public final class Exp3TimingPrimitives {
+    private static final double FIXED_32_32_SCALE = 4_294_967_296.0;
+
     private Exp3TimingPrimitives() {
     }
 
@@ -33,13 +36,27 @@ public final class Exp3TimingPrimitives {
             // than the capabilities of Library.currentDevice. Query the actual Minecraft-owned device.
             var deviceClock = device != 0L && ALC10.alcIsExtensionPresent(device, "ALC_SOFT_device_clock");
             var available = sourceStartDelay && sourceLatency && deviceClock && device != 0L;
-            var clockNs = available
-                ? SOFTDeviceClock.alcGetInteger64vSOFT(device, SOFTDeviceClock.ALC_DEVICE_CLOCK_SOFT)
-                : -1L;
+            var clockAndLatency = new long[]{-1L, -1L};
+            if (available) {
+                // The extension defines this pair as an atomic measurement. Keep both values so later
+                // session-time mapping can distinguish renderer time from physical output latency.
+                SOFTDeviceClock.alcGetInteger64vSOFT(
+                    device, SOFTDeviceClock.ALC_DEVICE_CLOCK_LATENCY_SOFT, clockAndLatency
+                );
+            }
 
-            return new Capability(sourceStartDelay, sourceLatency, deviceClock, device, clockNs, available, "ok");
+            return new Capability(
+                sourceStartDelay,
+                sourceLatency,
+                deviceClock,
+                device,
+                clockAndLatency[0],
+                clockAndLatency[1],
+                available,
+                "ok"
+            );
         } catch (RuntimeException exception) {
-            return new Capability(false, false, false, 0L, -1L, false,
+            return new Capability(false, false, false, 0L, -1L, -1L, false,
                 exception.getClass().getSimpleName() + ":" + String.valueOf(exception.getMessage()));
         }
     }
@@ -58,11 +75,11 @@ public final class Exp3TimingPrimitives {
     }
 
     /**
-     * Capability-gated scheduled group start at the current device clock plus {@code leadNanos}.
-     * The caller owns readiness and media-onset/preroll policy; this method only rewinds and schedules
-     * existing Minecraft-owned sources.
+     * Capability-gated scheduled group start at an explicit OpenAL device-clock timestamp.
+     * The caller owns readiness, public/session timeline mapping, output-latency compensation and
+     * media-onset/preroll policy. This method only rewinds and schedules existing Minecraft-owned sources.
      */
-    public static StartResult startScheduled(SoundEngine engine, int[] sourceIds, long leadNanos) {
+    public static StartResult startScheduledAt(SoundEngine engine, int[] sourceIds, long targetDeviceClockNs) {
         if (sourceIds.length == 0) return new StartResult(false, AL10.AL_INVALID_VALUE, 0L, -1L, "empty-source-set");
 
         var capability = inspect(engine);
@@ -70,22 +87,56 @@ public final class Exp3TimingPrimitives {
             return new StartResult(false, AL10.AL_INVALID_OPERATION, 0L, -1L,
                 "scheduled-unavailable:" + capability.detail());
         }
-
-        var nonNegativeLead = Math.max(0L, leadNanos);
-        final long targetClockNs;
-        try {
-            targetClockNs = Math.addExact(capability.deviceClockNs(), nonNegativeLead);
-        } catch (ArithmeticException exception) {
-            return new StartResult(false, AL10.AL_INVALID_VALUE, 0L, -1L, "clock-overflow");
+        if (targetDeviceClockNs < 0L) {
+            return new StartResult(false, AL10.AL_INVALID_VALUE, 0L, -1L, "negative-target-clock");
         }
 
         AL10.alGetError();
         AL10.alSourceRewindv(sourceIds);
         var before = System.nanoTime();
-        SOFTSourceStartDelay.alSourcePlayAtTimevSOFT(sourceIds, targetClockNs);
+        SOFTSourceStartDelay.alSourcePlayAtTimevSOFT(sourceIds, targetDeviceClockNs);
         var nanos = System.nanoTime() - before;
         var error = AL10.alGetError();
-        return new StartResult(error == AL10.AL_NO_ERROR, error, nanos, targetClockNs, "device-clock-scheduled");
+        return new StartResult(error == AL10.AL_NO_ERROR, error, nanos, targetDeviceClockNs, "device-clock-scheduled");
+    }
+
+    /** Convenience helper for diagnostic callers which only need a future source-start lead. */
+    public static StartResult startScheduledAfter(SoundEngine engine, int[] sourceIds, long leadNanos) {
+        var capability = inspect(engine);
+        if (!capability.available()) {
+            return new StartResult(false, AL10.AL_INVALID_OPERATION, 0L, -1L,
+                "scheduled-unavailable:" + capability.detail());
+        }
+
+        final long targetClockNs;
+        try {
+            targetClockNs = Math.addExact(capability.deviceClockNs(), Math.max(0L, leadNanos));
+        } catch (ArithmeticException exception) {
+            return new StartResult(false, AL10.AL_INVALID_VALUE, 0L, -1L, "clock-overflow");
+        }
+        return startScheduledAt(engine, sourceIds, targetClockNs);
+    }
+
+    /**
+     * Atomically samples one source's 32.32 fixed-point playback offset and the device clock used for
+     * that offset. This is stronger diagnostic evidence than separately querying AL_SAMPLE_OFFSET and
+     * then querying the device clock later.
+     */
+    public static SourceClockSample sampleOffsetClock(int sourceId) {
+        try {
+            var values = new long[2];
+            AL10.alGetError();
+            SOFTSourceLatency.alGetSourcei64vSOFT(
+                sourceId, SOFTDeviceClock.AL_SAMPLE_OFFSET_CLOCK_SOFT, values
+            );
+            var error = AL10.alGetError();
+            if (error != AL10.AL_NO_ERROR) {
+                return new SourceClockSample(false, error, -1L, -1L);
+            }
+            return new SourceClockSample(true, error, values[0], values[1]);
+        } catch (RuntimeException exception) {
+            return new SourceClockSample(false, AL10.AL_INVALID_OPERATION, -1L, -1L);
+        }
     }
 
     public record Capability(
@@ -94,11 +145,23 @@ public final class Exp3TimingPrimitives {
         boolean deviceClock,
         long device,
         long deviceClockNs,
+        long deviceLatencyNs,
         boolean available,
         String detail
     ) {
     }
 
     public record StartResult(boolean success, int alError, long callNanos, long targetDeviceClockNs, String detail) {
+    }
+
+    public record SourceClockSample(
+        boolean success,
+        int alError,
+        long sampleOffsetFixed32_32,
+        long deviceClockNs
+    ) {
+        public double sampleOffsetFrames() {
+            return success ? sampleOffsetFixed32_32 / FIXED_32_32_SCALE : -1.0;
+        }
     }
 }
