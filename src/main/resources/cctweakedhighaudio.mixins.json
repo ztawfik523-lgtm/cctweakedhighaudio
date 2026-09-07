@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.ztawfik.cctweakedhighaudio.client.audio.exp3.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "LibraryStreamingReservationMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
