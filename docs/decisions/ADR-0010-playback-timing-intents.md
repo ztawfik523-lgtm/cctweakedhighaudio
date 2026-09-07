@@ -53,15 +53,21 @@ Typical use: local multi-speaker playback that should start together but has no 
 
 ### Intent 3 — scheduled
 
-Meaning: begin at a specific HighAudio/session timeline point rather than merely "as soon as possible".
+Meaning: audible media sample zero should line up with a specific HighAudio/session timeline point rather than merely "as soon as possible".
 
 Leading implementation candidate:
 
 - share the same readiness/arming machinery as `together`;
-- feature-detect both `AL_SOFT_source_start_delay` and `ALC_SOFT_device_clock`;
+- feature-detect `AL_SOFT_source_start_delay`, `AL_SOFT_source_latency`, and `ALC_SOFT_device_clock`;
 - translate an internal HighAudio/session target into the current client's OpenAL device-clock domain;
+- account for renderer preparation preroll internally so the public target refers to media sample zero, not hidden silence;
+- account for measured output latency when mapping a future session/heard-at target to renderer/device-clock time;
 - schedule all required Minecraft-owned sources with `alSourcePlayAtTimevSOFT`;
-- the lead time is adaptive and exists only to ensure the target is still in the future after preparation; it is not a universal 100 ms playback tax.
+- use adaptive lead time only to ensure preparation and scheduling complete before the required source-start time.
+
+There is **no fixed 100 ms tax** in the public semantics. The current diagnostic uses a 100 ms silent preroll because NeoForge exposes the Minecraft channel after Minecraft has already initiated source playback; the diagnostic therefore schedules the underlying source early enough that the end of that hidden preroll, not its beginning, corresponds to the intended media-zero renderer timestamp.
+
+`ALC_SOFT_device_clock` also exposes device output latency. That distinction matters for later multi-client/session timing: a source can begin rendering at device-clock time `T` while the corresponding samples reach the physical output later. Local group synchronization only needs a shared renderer clock, but a public/session "heard at T" guarantee must compensate for the local device's output latency as part of the session-to-device mapping.
 
 If precise scheduled playback is requested and the required capabilities are unavailable, HighAudio must not silently pretend timing guarantees were met. A future API may allow an explicit fallback policy, but approximation must be opt-in.
 
@@ -69,7 +75,7 @@ Typical use: synchronized media/session starts, scripted timeline events, and la
 
 ## User-facing API rule
 
-Lua/public APIs should expose semantic intent such as `play`, `startTogether`, and `startAt`/session equivalents. They should **not** expose "A/B/C", OpenAL source IDs, raw device-clock timestamps, or renderer-specific extension names.
+Lua/public APIs should expose semantic intent such as `play`, `startTogether`, and `startAt`/session equivalents. They should **not** expose "A/B/C", OpenAL source IDs, raw device-clock timestamps, output-latency values, or renderer-specific extension names.
 
 The eventual exact Lua names are deferred until the media/session API milestone. This ADR defines semantics only; it does not authorize production media/session/network implementation during EXP-003.
 
@@ -89,20 +95,34 @@ Making `scheduled` the default would unnecessarily delay ordinary SFX. Making `i
 
 This decision concerns **initial start semantics**. None of the three modes alone proves long-running streaming cannot drift after an underrun. Future production synchronization still needs buffer-health and renderer-position/timeline monitoring.
 
-OpenAL device clocks are local to each client/device. A server cannot send one raw device-clock number to multiple machines. Future multiplayer synchronization must map a server/session timeline into each client's local device-clock domain.
+OpenAL device clocks are local to each client/device. A server cannot send one raw device-clock number to multiple machines. Future multiplayer synchronization must map a server/session timeline into each client's local device-clock domain and account for local output latency. The renderer-specific clock remains an internal implementation detail.
 
 Minecraft/SPR compatibility remains based on retaining Minecraft-owned `Channel`/source lifecycle. `together`/`scheduled` perform narrow state/start operations on those existing sources rather than introducing a second OpenAL source manager.
+
+## EXP-003 implementation boundary after re-audit
+
+The diagnostic branch now separates three timestamps/positions which must not be conflated:
+
+1. **source-start device clock** — when OpenAL begins advancing the source;
+2. **media-zero renderer clock** — source start plus any hidden preparation preroll;
+3. **estimated physical-output media-zero time** — media-zero renderer clock plus current device output latency.
+
+The scheduled diagnostic also uses `AL_SAMPLE_OFFSET_CLOCK_SOFT`, which reports source offset and device clock atomically, and compensates sequential source-query timestamps before calculating group spread. This is stronger evidence than comparing separately queried sample offsets to a later device-clock read.
+
+All such OpenAL operations remain on Minecraft's sound thread and operate only on Minecraft-owned sources. HighAudio still does not create/delete OpenAL sources, devices, or contexts.
 
 ## Validation required before acceptance
 
 Before this ADR is Accepted:
 
 1. exact `.247` and `.248` compilation/package/client-init must prove the scheduled-start bindings/accessors are valid;
-2. the real client must report the required timed-start/device-clock capabilities before scheduled mode is treated as available;
-3. scheduled start must be measured in a consolidated EXP-003 test, preferably bundled with any remaining M3 gate rather than requiring a standalone user launch;
+2. the initialized client device must report the required timed-start/device-clock capabilities before scheduled mode is treated as available;
+3. scheduled start must be measured in a consolidated EXP-003 real-client test only if that end-to-end renderer behavior remains architecture-blocking after automatic checks;
 4. preparation must not leak audible content;
-5. the fallback/error semantics for unavailable scheduled capability must be documented;
-6. long-running drift remains a later session/sync concern and must not be falsely claimed solved by the start primitive.
+5. the measured scheduled source group must preserve tight relative synchronization around media-zero;
+6. source-start, media-zero, and output-latency semantics must remain distinct in diagnostics and future session mapping;
+7. unavailable scheduled capability must fail explicitly unless a future caller opts into a weaker fallback;
+8. long-running drift remains a later session/sync concern and must not be falsely claimed solved by the start primitive.
 
 ## Alternatives rejected for this decision
 
