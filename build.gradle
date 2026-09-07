@@ -52,6 +52,11 @@ dependencies {
     // CC:Tweaked 1.120.0 public API coordinates from the pinned release README.
     compileOnly "cc.tweaked:cc-tweaked-${minecraft_version}-common-api:${cct_version}"
     compileOnly "cc.tweaked:cc-tweaked-${minecraft_version}-forge-api:${cct_version}"
+
+    // MILESTONE-001 only: GenericSource targets exact CC:T 1.120.0 SpeakerPeripheral.
+    // This intentional implementation coupling must stay localized under integration/cct.
+    compileOnly "cc.tweaked:cc-tweaked-${minecraft_version}-forge:${cct_version}"
+
     localRuntime "cc.tweaked:cc-tweaked-${minecraft_version}-forge:${cct_version}"
 }
 
