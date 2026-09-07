@@ -147,8 +147,8 @@ jobs:
           grep -Fq 'HIGHAUDIO_TARGET_STREAMING' build/exp-003-rebalance-javap.txt
 
           # Timing layer may control existing Minecraft-owned sources, but must not create/destroy
-          # sources, devices, or contexts. It must contain both the core together primitive and the
-          # optional device-clock scheduled primitive, plus clock-aware diagnostic measurement.
+          # sources, devices, or contexts. Verify function calls rather than integer constant names:
+          # javac inlines OpenAL's static-final enum constants into bytecode.
           javap -classpath "$jar_path" -p -c \
             dev.ztawfik.cctweakedhighaudio.client.audio.exp3.Exp3TimingPrimitives \
             dev.ztawfik.cctweakedhighaudio.client.audio.exp3.Exp3ScheduledController \
@@ -156,8 +156,8 @@ jobs:
             > build/exp-003-timing-javap.txt
           grep -Fq 'alSourcePlayv' build/exp-003-timing-javap.txt
           grep -Fq 'alSourcePlayAtTimevSOFT' build/exp-003-timing-javap.txt
-          grep -Fq 'ALC_DEVICE_CLOCK_LATENCY_SOFT' build/exp-003-timing-javap.txt
-          grep -Fq 'AL_SAMPLE_OFFSET_CLOCK_SOFT' build/exp-003-timing-javap.txt
+          grep -Fq 'alcGetInteger64vSOFT' build/exp-003-timing-javap.txt
+          grep -Fq 'alGetSourcei64vSOFT' build/exp-003-timing-javap.txt
           grep -Fq 'Exp3ScheduledController.run' build/exp-003-timing-javap.txt
           if grep -Eq 'alGenSources|alDeleteSources|alcOpenDevice|alcCloseDevice|alcCreateContext|alcDestroyContext' build/exp-003-timing-javap.txt; then
             echo "Unexpected OpenAL source/device/context ownership in timing layer"
