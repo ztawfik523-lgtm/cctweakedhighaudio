@@ -14,7 +14,8 @@ import java.util.Map;
 
 /** Part A of EXP-003: measure real Minecraft-owned streaming-channel capacity without raw OpenAL access. */
 public final class Exp3CapacityController {
-    private static final int[] ALLOWED_COUNTS = {1, 4, 8, 16};
+    private static final int MIN_COUNT = 1;
+    private static final int MAX_COUNT = 16;
 
     private static final List<Exp3CapacitySound> sounds = new ArrayList<>();
     private static final Map<Exp3CapacitySound, Channel> channels = new IdentityHashMap<>();
@@ -34,13 +35,21 @@ public final class Exp3CapacityController {
     }
 
     public static String runCapacity(int count) {
-        if (!isAllowed(count)) return "EXP-003 capacity count must be one of 1, 4, 8, 16";
+        if (count < MIN_COUNT || count > MAX_COUNT) {
+            return "EXP-003 capacity count must be between " + MIN_COUNT + " and " + MAX_COUNT;
+        }
 
         var minecraft = Minecraft.getInstance();
         var player = minecraft.player;
         if (player == null) return "EXP-003: no client player/world is active";
 
-        clearExisting();
+        // Keep each measurement isolated. Sound/channel release crosses the sound thread, so do not silently stop
+        // a previous run and immediately consume the same streaming pool for the next one. A new run becomes legal
+        // only after tick() has observed the previous one fully inactive and logged its final snapshot.
+        if (!sounds.isEmpty() && !finalLogged) {
+            return "EXP-003: previous capacity probe has not finalized yet; wait for phase=final (or stop it and wait) before starting another count";
+        }
+        if (!sounds.isEmpty()) clearStateOnly();
 
         requestedCount = count;
         captures = 0;
@@ -72,10 +81,12 @@ public final class Exp3CapacityController {
 
     public static String stop() {
         if (sounds.isEmpty()) return "EXP-003: no capacity probe state";
+        if (finalLogged) return "EXP-003: capacity probe already finalized";
+
         for (var sound : sounds) Minecraft.getInstance().getSoundManager().stop(sound);
         lastOutcome = "stop-requested";
         HighAudio.LOGGER.info("[EXP-003] capacity stop requested requested={} captures={}", requestedCount, captures);
-        return "EXP-003 capacity stop requested";
+        return "EXP-003 capacity stop requested; wait for phase=final before starting another count";
     }
 
     public static void onPlayStreaming(PlayStreamingSourceEvent event) {
@@ -112,7 +123,7 @@ public final class Exp3CapacityController {
     }
 
     public static void tick() {
-        if (sounds.isEmpty()) return;
+        if (sounds.isEmpty() || finalLogged) return;
         ticksSinceRequest++;
 
         if (!summary5 && ticksSinceRequest >= 5) {
@@ -129,7 +140,7 @@ public final class Exp3CapacityController {
         }
 
         var active = activeSoundCount();
-        if (!finalLogged && active == 0 && ticksSinceRequest >= 5) {
+        if (active == 0 && ticksSinceRequest >= 5) {
             finalLogged = true;
             logSnapshot("final");
             lastOutcome = "finished:" + captures + "/" + requestedCount + " captured";
@@ -143,6 +154,7 @@ public final class Exp3CapacityController {
             + ", runningChannels=" + runningChannelCount()
             + ", stoppedChannels=" + stoppedChannelCount()
             + ", closedStreams=" + closedStreamCount()
+            + ", finalized=" + finalLogged
             + ", engineGeneration=" + engineGeneration
             + ", last=" + lastOutcome
             + ", soundDebug=" + safeDebugString();
@@ -193,17 +205,6 @@ public final class Exp3CapacityController {
     private static long usedHeap() {
         var runtime = Runtime.getRuntime();
         return runtime.totalMemory() - runtime.freeMemory();
-    }
-
-    private static boolean isAllowed(int count) {
-        for (var allowed : ALLOWED_COUNTS) if (allowed == count) return true;
-        return false;
-    }
-
-    private static void clearExisting() {
-        var manager = Minecraft.getInstance().getSoundManager();
-        for (var sound : sounds) manager.stop(sound);
-        clearStateOnly();
     }
 
     private static void clearStateOnly() {
