@@ -1,0 +1,36 @@
+modLoader="javafml"
+loaderVersion="${loader_version_range}"
+license="${mod_license}"
+issueTrackerURL="https://github.com/ztawfik523-lgtm/cctweakedhighaudio/issues"
+
+[[mods]]
+modId="${mod_id}"
+version="${mod_version}"
+displayName="${mod_name}"
+displayURL="https://github.com/ztawfik523-lgtm/cctweakedhighaudio"
+authors="ztawfik523-lgtm"
+description='''
+High-quality, controllable media playback through normal CC:Tweaked speakers.
+'''
+
+[[dependencies.${mod_id}]]
+modId="neoforge"
+type="required"
+versionRange="${neo_version_range}"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.${mod_id}]]
+modId="minecraft"
+type="required"
+versionRange="${minecraft_version_range}"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.${mod_id}]]
+modId="computercraft"
+type="required"
+reason="HighAudio extends CC:Tweaked speakers and does not provide a standalone replacement."
+versionRange="${cct_version_range}"
+ordering="AFTER"
+side="BOTH"
