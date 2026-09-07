@@ -128,21 +128,37 @@ The policy is conceptually:
 
 ```text
 original static + original streaming = preserved combined reservation
-new streaming = min(16, combined reservation - safe static floor)
-new static    = combined reservation - new streaming
+if vanilla originalStreaming == 8:
+    new streaming = min(16, combined reservation - safe static floor)
+    new static    = combined reservation - new streaming
+else:
+    keep the vanilla split unchanged
 ```
 
-On the measured 255-channel runtime this transforms `247 + 8` into `239 + 16`, but the implementation derives the original reservation from the runtime rather than assuming those constants globally. It also fails loudly if the actual Minecraft constructor arguments do not match the exact vanilla 1.21.1 reservation shape it derived, rather than silently composing with an unknown transform.
+This conservative eligibility rule matters: HighAudio does **not** force 16 streaming slots on a lower-capacity device for which vanilla itself derives fewer than eight. Such a device keeps its vanilla split instead of sacrificing a disproportionate amount of ordinary static/SFX capacity.
 
-### Frozen automatic Part A2 candidate — PASS
+On the measured 255-channel runtime the eligible path transforms `247 + 8` into `239 + 16`, but the implementation derives the original reservation from the runtime rather than assuming those constants globally. It also fails loudly if the actual Minecraft constructor arguments do not match the exact vanilla 1.21.1 reservation shape it derived, rather than silently composing with an unknown transform.
+
+### Superseded first automatic Part A2 candidate
+
+The first automatic rebalance candidate was fully green, but a post-pass re-evaluation found that it was too aggressive on hypothetical lower-capacity devices because it could attempt to raise a vanilla reservation below 8 to 16. It was therefore superseded **before any user manual run**.
 
 ```text
 code/CI commit:    fc4c63efc5377700d71a78683cd123dc60b7d635
 CI run:            34102697796
+JAR SHA-256:
+6a9e1eeb548b7f2b3b985f3357355510d5e8dfcbbb4319d1fbce6c11c0dabe96
+```
+
+### Frozen conservative automatic Part A2 candidate — PASS
+
+```text
+code/CI commit:    82c195637de3987463c864c8f8493e9194410094
+CI run:            34103604455
 NeoForge 21.1.247: PASS
 NeoForge 21.1.248: PASS
 JAR SHA-256 on both matrix legs:
-6a9e1eeb548b7f2b3b985f3357355510d5e8dfcbbb4319d1fbce6c11c0dabe96
+f1c06daa595bf3a081d4cae36bdc7cadc0bd5cec3bd717bf937d734ee8e74da7
 ```
 
 Both matrix artifacts are byte-identical. The exact development-client sound-engine initialization smoke passed on both target NeoForge builds and logged:
@@ -154,6 +170,7 @@ originalStreaming=8
 newStatic=239
 newStreaming=16
 combinedPreserved=true
+rebalanceApplied=true
 targetStreaming=16
 ```
 
@@ -169,7 +186,7 @@ Additional automatic checks passed:
 - direct bytecode/symbol inspection found no HighAudio `alGenSources`, `alDeleteSources`, AL10 raw-source ownership, or independent source manager in the reservation patch;
 - packaged-JAR dedicated-server startup passed on `.247` and `.248`, confirming the client-only transform does not break server loading.
 
-The only client `ERROR` in the CI smoke is the headless Linux narrator failing to load `flite`; it is unrelated to HighAudio/Mixin/OpenAL allocation. OpenAL itself initialized successfully on the CI `No Output` device and the sound engine started after the rebalance diagnostic.
+Independent artifact inspection reconfirmed the two matrix JARs are byte-identical and match the SHA-256 above. No HighAudio/Mixin/OpenAL allocation error was found in the candidate diagnostics.
 
 ### Manual Part A2 acceptance evidence — NOT RUN
 
@@ -185,7 +202,7 @@ wait for final
 Expected success evidence:
 
 ```text
-streaming reservation rebalance ... originalStreaming=8 ... newStreaming=16 ... combinedPreserved=true
+streaming reservation rebalance ... originalStreaming=8 ... newStreaming=16 ... combinedPreserved=true ... rebalanceApplied=true
 capacity requested=16
 captures=16
 activeSounds=16
