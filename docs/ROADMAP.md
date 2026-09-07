@@ -56,143 +56,103 @@ The MILESTONE-001 integration pivot does **not** invalidate GATE-000. Do not red
 
 ## MILESTONE-001 — EXP-001 CC:T speaker augmentation proof
 
-**Status:** IN PROGRESS  
-**Current candidate:** targeted `GenericSource` (`ADR-0008`)  
+**Status:** COMPLETE  
+**Gate:** `GATE-001: PASSED`  
+**Accepted candidate:** targeted `GenericSource` (`ADR-0008`)  
 **Superseded candidate:** additive `SpeakerPeripheral` Mixin (`ADR-0003`)  
-**Manual gate:** `TEST-BATCH-001` NOT RUN
+**Manual gate:** `TEST-BATCH-001: PASS`
 
 **Goal:** prove HighAudio can add a diagnostic Lua method to the real CC:T speaker without replacing the speaker peripheral or regressing native behavior.
 
-Implement only enough to expose:
+The accepted experiment exposed only:
 
 ```lua
 speaker.highAudioProbe()
 ```
 
-The probe should identify emitter kind and return stable diagnostic information. It must not start real HighAudio media playback.
+### Accepted evidence
 
-### Candidate selection history
-
-The first candidate was a minimal additive Mixin into exact CC:T 1.120.0 `SpeakerPeripheral`. Automatic checks showed that candidate could build/apply and dedicated-server startup succeeded on both target NeoForge versions.
-
-Before the manual gate, exact CC:T 1.120.0 source was re-evaluated. `ComputerCraftAPI.registerGenericSource` plus a method targeted at the exact internal `SpeakerPeripheral` can contribute Lua methods through CC:T's normal method supplier without transforming CC:T bytecode or replacing the peripheral object.
-
-A separate comparison branch/run automatically proved the GenericSource mechanism can be generated/registered and start on both exact NeoForge versions:
+Frozen code/evidence candidate:
 
 ```text
-branch: exp-001-genericsource-comparison
-commit: ecacab361416c0bbdbd1bd789806f567317773db
-CI run: 34078670979
+branch: milestone-001-exp-001-genericsource
+commit: 93a72cbb13357cd9d9906478998604835e0931b0
+CI run: 34082746562
 JAR SHA-256:
-e9a82ee4f4403881c01c4901b2dff88d86fc16cafa882581430064f9c2f1471a
+0d5478ad27f44b6bf19857372747ae337b0ccf40606ec5f9d3cde71a9014ee64
 ```
 
-The implementation milestone was then restarted from clean `main` on:
+Automatic evidence passed on NeoForge 21.1.247 and 21.1.248, including exact CC:T method-supplier generation/invocation, speaker-only targeting, preservation of native speaker methods, live `ServerContext` registration, development-server startup, and clean installed packaged-JAR dedicated-server startup.
 
-```text
-milestone-001-exp-001-genericsource
-```
+The NeoForge 21.1.247 broad real-client gate then proved:
 
-This clean restart is specifically to avoid carrying unseen Mixin files/configuration into the chosen candidate. It does not repeat MILESTONE-000.
+- direct normal speaker exposure/callability;
+- native `playNote`, `playSound`, `playAudio`, and `stop` remain usable;
+- wired remote speaker exposure/callability;
+- turtle speaker exposure/callability, including recreated peripheral instances;
+- real `PocketSpeakerPeripheral` exposure/callability;
+- newly-created/reconstructed normal speaker peripherals continue to receive the GenericSource method;
+- deterministic lifecycle reconstruction after disabling spawn-chunk retention;
+- no observed HighAudio-specific runtime exception.
 
-### Automatic checks
+The extra NeoForge 21.1.248 gameplay repetition was explicitly waived after re-audit rather than being falsely recorded as run. The exact candidate already passed both development and installed packaged-server runtime compatibility checks on 21.1.248, and NeoForge's official 21.1.248 release delta from 21.1.247 is a `SolidBucketItem#getPlaceSound` backport unrelated to CC:T GenericSource/peripheral dispatch.
 
-Before the manual gate, CI should prove on both NeoForge 21.1.247 and 21.1.248:
+### Decision
 
-- exact stack compiles;
-- the finished JAR contains the GenericSource integration/self-check;
-- CC:T's exact method supplier generates `highAudioProbe` for a `SpeakerPeripheral` subtype;
-- native `playNote`, `playSound`, `playAudio`, and `stop` remain present in that generated method map;
-- GenericSource registration occurs;
-- the dedicated server reaches ready state;
-- exact JAR SHA-256 is recorded.
+`ADR-0008` is Accepted. HighAudio uses the public `ComputerCraftAPI.registerGenericSource` registration mechanism while deliberately targeting exact CC:T 1.120.0's non-public `SpeakerPeripheral`; that implementation coupling remains localized under `integration/cct`.
 
-### Consolidated runtime test
-
-Use `TEST-BATCH-001` to cover:
-
-- placed speaker next to computer;
-- placed speaker via wired modem/network;
-- native `playNote`;
-- native `playSound`;
-- native `playAudio`;
-- native `stop`;
-- computer attach/detach/reboot;
-- speaker chunk unload/reload;
-- block break/re-place;
-- turtle speaker method visibility;
-- pocket speaker method visibility if practical;
-- NeoForge 21.1.247 broad pass;
-- NeoForge 21.1.248 compatibility subset.
-
-Normal temporary native speaker `false`/busy returns should be retried and distinguished from missing methods, exceptions, or persistently broken dispatch.
-
-### GATE-001
-
-GATE-001 passes only when:
-
-1. `highAudioProbe` is discoverable and callable on the intended normal speaker.
-2. Native `playNote`, `playSound`, `playAudio`, and `stop` remain present and behaviorally usable.
-3. Direct and wired attachment work.
-4. HighAudio does not create a duplicate/replacement speaker peripheral or cause identity churn.
-5. Lifecycle transitions do not corrupt method exposure.
-6. Turtle/pocket exposure is observed rather than guessed.
-7. Both exact NeoForge target builds pass registration/startup evidence.
-
-### Decision after gate
-
-If PASS:
-
-- accept `ADR-0008`;
-- record exact evidence in `PROTOTYPES.md` and `VERIFIED-FACTS.md` where justified;
-- mark MILESTONE-001/GATE-001 complete;
-- proceed to MILESTONE-002.
-
-If FAIL:
-
-1. preserve the GenericSource failure evidence;
-2. distinguish implementation failure from deliberate CC:T `disabled_generic_methods` configuration;
-3. first fallback is the already-viable additive `SpeakerPeripheral` Mixin from `ADR-0003`;
-4. then consider forwarding/`IDynamicPeripheral` only if identity can be preserved;
-5. capability wrapping only with explicit recursion/invalidation/equality proof;
-6. do not jump directly to a full CC:T fork.
+`ADR-0003` remains the first technical fallback if a future exact CC:T version makes the targeted GenericSource approach unusable.
 
 ---
 
 ## MILESTONE-002 — EXP-002 Minecraft-owned PCM streaming proof
 
+**Status:** IN PROGRESS  
+**Branch:** `milestone-002-exp-002-minecraft-audio`  
+**Manual gate:** `TEST-BATCH-002: NOT RUN`
+
 **Goal:** prove HighAudio can render arbitrary high-quality PCM through Minecraft's own sound lifecycle.
 
-Build:
+Current prototype contains only:
 
-- generated mono PCM source (sine/chirp/test sequence, no codec dependency);
-- custom HighAudio `SoundInstance`;
+- deterministic 8-second 48 kHz / 16-bit / mono generated PCM chirp;
+- custom positional HighAudio `SoundInstance`;
 - custom HighAudio `AudioStream`;
 - normal `SoundManager.play` path;
 - NeoForge `PlayStreamingSourceEvent` capture/diagnostics;
-- `SoundEngineLoadEvent`/reload diagnostics.
+- `SoundEngineLoadEvent`/reload diagnostics;
+- client command `/highaudio_exp2 play|stop|status`;
+- no direct raw OpenAL source manager.
 
-Test:
+Exact source/API recheck before implementation established that NeoForge 21.1.248 exposes the required `PlayStreamingSourceEvent` and `SoundEngineLoadEvent`, current FML automatically routes `IModBusEvent` subscribers to the mod bus, and both exact CC:T 1.120.0 plus NeoForge's own 1.21.1 client test use the same custom `SoundInstance#getStream(...)` + `AudioStream` pattern.
 
+### Test
+
+Use `TEST-BATCH-002` to cover in one consolidated client session:
+
+- basic generated PCM playback;
 - position and attenuation;
-- `RECORDS`/selected sound category and master volume;
-- stop/cleanup;
-- source movement update mechanism;
-- F3+T/resource reload;
-- output-device reload/change where test environment allows;
-- disconnect/world change;
-- SPR absent;
-- SPR 1.21.1-1.5.1 present (basic audibility/acoustic observation only, not final compatibility).
+- `RECORDS` sound category and master volume;
+- explicit stop and natural completion;
+- real Minecraft `Channel` capture through `PlayStreamingSourceEvent`;
+- F3+T/resource/sound-engine reload and replay;
+- disconnect/world change and replay;
+- output-device reload/change where practical;
+- SPR absent baseline;
+- exact SPR 1.21.1-1.5.1 basic follow-up observation only after the baseline is clean.
+
+Full SPR correctness remains MILESTONE-010.
 
 **Gate GATE-002:**
 
 - sound is Minecraft-owned and positional;
-- no persistent leaked sound/channel after stop/reload;
+- master/category volume semantics behave normally;
+- a HighAudio `SoundInstance` can be associated with its real Minecraft `Channel` through official NeoForge events;
+- no persistent leaked sound/channel after stop/natural completion/reload/world leave;
 - source can be reconstructed after sound-engine reload;
-- official NeoForge events give enough Channel/lifecycle access to proceed, or the exact missing private access is identified narrowly;
 - no independent raw OpenAL manager is required for basic playback.
 
-**Decision after gate:** accept/reject/supersede `ADR-0004`.
+**Decision after gate:** keep `ADR-0004` Proposed until EXP-003 also resolves capacity/synchronization assumptions; EXP-002 alone does not accept ADR-0004.
 
 ---
 
