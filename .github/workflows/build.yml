@@ -44,6 +44,10 @@ jobs:
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Verify Gradle wrapper JAR checksum
+        shell: bash
+        run: echo '423cb469ccc0ecc31f0e4e1c309976198ccb734cdcbb7029d4bda0f18f57e8d9  gradle/wrapper/gradle-wrapper.jar' | sha256sum -c -
+
       - name: Verify Gradle wrapper
         run: ./gradlew --no-daemon --version
 
