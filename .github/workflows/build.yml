@@ -58,7 +58,7 @@ jobs:
       - name: Build against NeoForge ${{ matrix.neoforge }}
         run: ./gradlew --no-daemon -Pneo_version=${{ matrix.neoforge }} build
 
-      - name: Verify packaged mod metadata and clean EXP-001 GenericSource implementation
+      - name: Verify packaged MILESTONE-002 candidate
         shell: bash
         run: |
           set -euo pipefail
@@ -87,35 +87,45 @@ jobs:
           grep -Fq 'versionRange="[21.1.247,21.2)"' <<<"$metadata"
 
           if grep -Fq '[[mixins]]' <<<"$metadata"; then
-            echo "Unexpected Mixin declaration found in clean GenericSource build"
+            echo "Unexpected Mixin declaration found"
             exit 1
           fi
 
           jar_entries="$(unzip -Z1 "$jar_path")"
+
+          # Accepted MILESTONE-001 integration must remain present and clean.
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/HighAudio.class' <<<"$jar_entries"
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/integration/cct/SpeakerGenericSource.class' <<<"$jar_entries"
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/integration/cct/GenericSourceSelfCheck.class' <<<"$jar_entries"
 
           if grep -Fq 'SpeakerPeripheralMixin.class' <<<"$jar_entries"; then
-            echo "Unexpected old SpeakerPeripheralMixin.class found in clean GenericSource build"
+            echo "Unexpected old SpeakerPeripheralMixin.class found"
             exit 1
           fi
           if grep -Fq 'cctweakedhighaudio.mixins.json' <<<"$jar_entries"; then
-            echo "Unexpected old HighAudio Mixin config found in clean GenericSource build"
+            echo "Unexpected old HighAudio Mixin config found"
             exit 1
           fi
 
-          sha256sum "$jar_path" | tee build/exp-001-jar-sha256.txt
-          echo "Verified clean packaged EXP-001 GenericSource implementation in $jar_path"
+          # MILESTONE-002 client probe must actually be packaged.
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp2/GeneratedPcmStream.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp2/GeneratedPcmSound.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp2/Exp2AudioController.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp2/Exp2ClientEvents.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp2/Exp2ClientModEvents.class' <<<"$jar_entries"
+          grep -Fq 'assets/cctweakedhighaudio/sounds.json' <<<"$jar_entries"
 
-      - name: EXP-001 GenericSource development-server smoke on NeoForge ${{ matrix.neoforge }}
+          sha256sum "$jar_path" | tee build/exp-002-jar-sha256.txt
+          echo "Verified packaged MILESTONE-002 EXP-002 candidate in $jar_path"
+
+      - name: Accepted EXP-001 development-server regression smoke on NeoForge ${{ matrix.neoforge }}
         shell: bash
         run: |
           set -euo pipefail
 
           mkdir -p run/server
           printf 'eula=true\n' > run/server/eula.txt
-          log="build/exp-001-dev-server-${{ matrix.neoforge }}.log"
+          log="build/exp-002-dev-server-${{ matrix.neoforge }}.log"
 
           ./gradlew --no-daemon -Pneo_version=${{ matrix.neoforge }} runServer >"$log" 2>&1 &
           gradle_pid=$!
@@ -161,14 +171,14 @@ jobs:
           done
 
           if [[ "$self_check" -ne 1 || "$registered" -ne 1 || "$live_registry" -ne 1 || "$live_registry_fail" -ne 0 || "$server_ready" -ne 1 ]]; then
-            echo "EXP-001 development-server smoke failed: self_check=$self_check registered=$registered live_registry=$live_registry live_registry_fail=$live_registry_fail server_ready=$server_ready"
+            echo "Development-server regression smoke failed: self_check=$self_check registered=$registered live_registry=$live_registry live_registry_fail=$live_registry_fail server_ready=$server_ready"
             tail -n 400 "$log" || true
             exit 1
           fi
 
-          echo "EXP-001 GenericSource development-server live-registry smoke passed on NeoForge ${{ matrix.neoforge }}"
+          echo "Accepted EXP-001 development-server regression smoke passed on NeoForge ${{ matrix.neoforge }}"
 
-      - name: EXP-001 packaged-JAR dedicated-server smoke on NeoForge ${{ matrix.neoforge }}
+      - name: MILESTONE-002 packaged-JAR dedicated-server smoke on NeoForge ${{ matrix.neoforge }}
         shell: bash
         run: |
           set -euo pipefail
@@ -192,7 +202,7 @@ jobs:
           server_dir="$GITHUB_WORKSPACE/build/packaged-server-${{ matrix.neoforge }}"
           installer="$server_dir/neoforge-installer.jar"
           installer_sha="$server_dir/neoforge-installer.jar.sha256"
-          log="$GITHUB_WORKSPACE/build/exp-001-packaged-server-${{ matrix.neoforge }}.log"
+          log="$GITHUB_WORKSPACE/build/exp-002-packaged-server-${{ matrix.neoforge }}.log"
           mkdir -p "$server_dir"
 
           base_url="https://maven.neoforged.net/releases/net/neoforged/neoforge/${{ matrix.neoforge }}"
@@ -257,7 +267,7 @@ jobs:
           done
 
           if [[ "$registered" -ne 1 || "$live_registry" -ne 1 || "$live_registry_fail" -ne 0 || "$server_ready" -ne 1 ]]; then
-            echo "EXP-001 packaged-server smoke failed: registered=$registered live_registry=$live_registry live_registry_fail=$live_registry_fail server_ready=$server_ready"
+            echo "Packaged-server smoke failed: registered=$registered live_registry=$live_registry live_registry_fail=$live_registry_fail server_ready=$server_ready"
             echo "--- installer log ---"
             tail -n 200 "$server_dir/install.log" || true
             echo "--- server log ---"
@@ -265,17 +275,17 @@ jobs:
             exit 1
           fi
 
-          echo "EXP-001 packaged-JAR server smoke passed on NeoForge ${{ matrix.neoforge }}"
+          echo "MILESTONE-002 packaged-JAR server smoke passed on NeoForge ${{ matrix.neoforge }}"
 
-      - name: Upload JAR and EXP-001 diagnostics
+      - name: Upload JAR and EXP-002 diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cctweakedhighaudio-exp-001-neoforge-${{ matrix.neoforge }}
+          name: cctweakedhighaudio-exp-002-neoforge-${{ matrix.neoforge }}
           path: |
             build/libs/cctweakedhighaudio-*.jar
-            build/exp-001-jar-sha256.txt
-            build/exp-001-dev-server-*.log
-            build/exp-001-packaged-server-*.log
+            build/exp-002-jar-sha256.txt
+            build/exp-002-dev-server-*.log
+            build/exp-002-packaged-server-*.log
             build/packaged-server-*/install.log
           if-no-files-found: error
