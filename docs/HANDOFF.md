@@ -3,8 +3,8 @@
 **Status:** canonical chat/session handoff  
 **Target stack:** Minecraft 1.21.1 / Java 21 / CC:Tweaked 1.120.0 / NeoForge 21.1.247–21.1.248  
 **Prepared:** 2026-09-07  
-**Current branch:** `milestone-002-exp-002-minecraft-audio`  
-**Next gate:** `MILESTONE-002` / `EXP-002` / `TEST-BATCH-002`
+**Current completed branch:** `milestone-002-exp-002-minecraft-audio`  
+**Next work:** `MILESTONE-003` / `EXP-003` — capacity and synchronization proof
 
 Exact runtime/prototype evidence remains more authoritative than this summary.
 
@@ -34,104 +34,116 @@ Repository/bootstrap/version pinning/CI matrix remains valid.
 
 Accepted integration: targeted CC:T `GenericSource` (`ADR-0008`).
 
-Frozen EXP-001 candidate evidence:
+Frozen EXP-001 candidate:
 
 ```text
-code/evidence commit: 93a72cbb13357cd9d9906478998604835e0931b0
-CI run:              34082746562
+commit: 93a72cbb13357cd9d9906478998604835e0931b0
+CI run: 34082746562
 JAR SHA-256:
 0d5478ad27f44b6bf19857372747ae337b0ccf40606ec5f9d3cde71a9014ee64
 ```
 
-Automatic evidence passed on both NeoForge 21.1.247 and 21.1.248, including exact CC:T method generation, speaker-only targeting, live `ServerContext` registration, development-server startup, and installed packaged-JAR dedicated-server startup.
-
-Real NeoForge 21.1.247 client evidence passed for:
-
-- direct block speaker;
-- wired remote speaker;
-- native `playNote`, `playSound`, `playAudio`, `stop`;
-- turtle speaker;
-- real pocket speaker;
-- recreated/reconstructed block/turtle speaker peripheral instances;
-- deterministic lifecycle reconstruction after disabling spawn-chunk retention;
-- no observed HighAudio-specific runtime exception.
-
-A second 21.1.248 gameplay repetition was explicitly waived after re-audit. The exact candidate already passed both server/runtime compatibility paths on .248, and NeoForge's official 21.1.248 changelog contains only a `SolidBucketItem#getPlaceSound` backport after .247, unrelated to GenericSource/peripheral dispatch.
+Automatic evidence passed on NeoForge 21.1.247 and 21.1.248. Broad real-client evidence on 21.1.247 passed direct/wired block speakers, native CC:T methods, turtle, real pocket speaker, and reconstructed peripheral/lifecycle cases. The extra 21.1.248 gameplay repetition was explicitly waived after exact changelog/CI re-audit.
 
 `ADR-0003` remains superseded fallback history; `ADR-0008` is Accepted.
 
-## MILESTONE-002 / EXP-002 — current work
+### MILESTONE-002 / EXP-002 / GATE-002 — PASSED
 
-Goal: prove arbitrary HighAudio-owned PCM can be rendered through Minecraft's own sound lifecycle before building codecs, uploads, sessions, or synchronization.
+Goal proven: arbitrary HighAudio-owned high-quality PCM can be rendered through Minecraft's own sound lifecycle without an independent raw OpenAL source manager.
 
-Exact source recheck established:
+Frozen EXP-002 candidate:
 
-- NeoForge 21.1.248 has `PlayStreamingSourceEvent`, exposing the actual `SoundInstance` and Minecraft-owned `Channel` on the main client event bus;
-- NeoForge 21.1.248 has `SoundEngineLoadEvent`, an `IModBusEvent` fired when the sound engine is constructed/reloaded;
-- current FML automatically routes `@EventBusSubscriber` methods for `IModBusEvent` to the mod bus and other events to the game bus;
-- exact CC:T 1.120.0 already uses a custom `SoundInstance` + `AudioStream` plus `PlayStreamingSourceEvent` to associate its PCM stream with Minecraft's `Channel`;
-- NeoForge's own 1.21.1 client test contains the same custom-AudioStream pattern.
+```text
+branch: milestone-002-exp-002-minecraft-audio
+code commit: 4e31bbd08cc8c4e314637d857098c02232f41ff4
+CI run: 34088822441
+JAR SHA-256:
+515ced7cb14d0ac94131388997c23547cd907a0348a2777a90abf5467d312913
+```
 
-Current EXP-002 implementation intentionally contains only:
+Automatic evidence passed on both NeoForge 21.1.247 and 21.1.248, including compilation, packaged EXP-002 classes/resources, EXP-001 regression checks, development-server startup, and clean installed packaged-JAR dedicated-server startup.
 
-- deterministic 8-second 48 kHz / 16-bit / mono generated PCM chirp;
-- custom positional `GeneratedPcmSound`;
-- custom `GeneratedPcmStream`;
-- normal `SoundManager.play(...)` ownership;
-- `PlayStreamingSourceEvent` channel-capture diagnostics;
-- `SoundEngineLoadEvent` reload diagnostics;
-- client command `/highaudio_exp2 play|stop|status`;
-- `assets/cctweakedhighaudio/sounds.json` placeholder using CC:T's guaranteed empty streaming resource.
+Real NeoForge 21.1.247 client evidence passed for:
 
-There is no direct raw OpenAL source creation in EXP-002.
-
-## TEST-BATCH-002
-
-Use `docs/test-batches/TEST-BATCH-002.md` only after the final branch head is green on both NeoForge versions.
-
-The single baseline client session should cover:
-
-- generated PCM audibility;
+- generated 48 kHz / 16-bit / mono PCM audibility;
+- Minecraft-owned `SoundManager` playback;
+- real `PlayStreamingSourceEvent` association with `com.mojang.blaze3d.audio.Channel`;
 - positional attenuation;
 - Records/Jukebox category volume;
 - master volume;
-- explicit stop;
-- natural completion;
-- `PlayStreamingSourceEvent` channel capture;
-- F3+T/sound-engine reload and replay;
-- world leave/rejoin;
-- output-device reload if practical.
+- repeated natural completion;
+- repeated explicit stop and inactive status;
+- F3+T sound-engine reload plus successful replay;
+- integrated singleplayer pause/resume without audible skip/play-ahead;
+- disconnect cleanup with no stale sound after rejoin;
+- no observed HighAudio-specific runtime exception/OpenAL error.
 
-SPR 1.21.1-1.5.1 gets only a narrow follow-up observation after the SPR-absent baseline; full SPR correctness remains MILESTONE-010.
+Manual evidence:
 
-## GATE-002
+`docs/test-batches/evidence/TEST-BATCH-002-NEOFORGE-21.1.247.md`
 
-Pass when evidence establishes:
+### EXP-002 lessons that constrain EXP-003
 
-- HighAudio PCM is rendered through Minecraft's normal sound path;
-- position/volume controls behave normally;
-- the HighAudio `SoundInstance` can be associated with Minecraft's real `Channel` through official NeoForge events;
-- stop/natural completion leave no persistent probe sound/channel;
-- sound-engine reload is observable and playback can be reconstructed afterward;
-- world lifecycle leaves no stale playback;
-- basic playback needs no independent raw OpenAL manager.
+1. `AudioStream`/generated-stream `bytesRead` is **not audible playback position**. Minecraft/OpenAL may have the full stream queued while the channel continues rendering it. Do not use stream consumption as synchronization time.
+2. The Java `SoundEngine` object identity remained stable while F3+T reinitialized OpenAL. Use `SoundEngineLoadEvent` generation/lifecycle signals, not Java object identity, to distinguish renderer generations.
+3. A sound with effective Minecraft volume zero may be rejected before a streaming channel is allocated, so `PlayStreamingSourceEvent` is not guaranteed for muted sounds. EXP-003 arming must not depend on ordinary category/master mute producing channels.
 
-A narrow OpenAL/source-id accessor for precise synchronization, if later required, belongs to EXP-003 rather than EXP-002.
+`ADR-0004` remains Proposed until EXP-003 resolves capacity and synchronization assumptions, exactly as its acceptance rule requires.
 
-## Non-goals until GATE-002 passes
+## MILESTONE-003 / EXP-003 — next work
 
-Do not start:
+Goal: measure the real Minecraft-owned source/channel capacity and select a measured local multi-source synchronization mechanism before production media/session architecture hardens around guesses.
 
-- real media-file upload;
-- WAV/Ogg/MP3 codec integration;
-- ContentId/cache/transfer protocol;
-- server MediaSession implementation;
-- multi-speaker synchronization;
-- direct OpenAL source ownership;
-- production SPR integration;
-- URL/live streaming;
-- Valkyrien Skies support.
+### Part A — capacity
+
+Create controlled 1 / 4 / 8 / 16 simultaneous HighAudio streaming sounds and record:
+
+- successful channel captures;
+- acquisition failure/voice stealing behavior;
+- Minecraft sound/library debug information;
+- streaming pool usage/max if accessible;
+- CPU/memory observations where practical;
+- coexistence with ordinary Minecraft sounds;
+- SPR-off baseline first, SPR-on comparison later.
+
+Do not infer HighAudio capacity from raw OpenAL hardware maximum.
+
+### Part B — synchronization
+
+Candidate family to test, not yet accepted:
+
+```text
+Minecraft creates/configures Channel normally
+-> HighAudio captures Channel through NeoForge event
+-> prepare/arm channels without audible leak
+-> use high-level Minecraft control if measured sufficient
+   OR the smallest source-id/private accessor if required
+-> if justified, atomic OpenAL vector start for already-Minecraft-owned sources
+-> measure actual first-sample/source-offset skew
+```
+
+Before choosing a low-level route, compare the meaningful options and their tradeoffs:
+
+- pure Minecraft/high-level scheduled start — cleanest compatibility, potentially looser skew;
+- narrow read/control accessor to Minecraft-owned OpenAL source — tighter measurement/control with localized version-sensitive coupling;
+- independent raw OpenAL ownership — maximum control but high lifecycle/SPR/source-pool cost, fallback only if the first two fail.
+
+Do not silently choose among those architectural boundaries without evidence.
+
+### EXP-003 must measure
+
+- 1/4/8/16 source capacity;
+- escaped samples during prepare/arm;
+- 2/4/8/16 source start skew;
+- pause/resume skew;
+- seek/re-arm behavior if the chosen candidate needs it;
+- real source/sample offset reliability;
+- available OpenAL timing/latency extensions rather than assuming them.
+
+## Still deferred
+
+Do not start real media upload, codecs, ContentId/cache/transfer, server MediaSession, production sync groups, moving emitters, production SPR integration, URL/live streaming, or VS2 work until the relevant later milestone.
 
 ## Manual-test cadence
 
-Do not request Minecraft launches after small patches. Keep source/CI checks frequent and accumulate user-only observations into the consolidated milestone test batch.
+Keep implementation/source/CI checks frequent but batch user-only Minecraft observations. MILESTONE-003 should have one consolidated capacity/sync test build rather than many tiny launch requests.
