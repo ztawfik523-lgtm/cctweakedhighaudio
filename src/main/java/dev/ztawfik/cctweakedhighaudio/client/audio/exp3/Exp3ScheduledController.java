@@ -23,7 +23,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * streaming sources without adding production session/media behavior.
  */
 public final class Exp3ScheduledController {
-    private static final long DIAGNOSTIC_LEAD_NANOS = 250_000_000L;
+    /** Diagnostic target for audible media sample zero, not for the hidden silent preroll. */
+    private static final long DIAGNOSTIC_MEDIA_ZERO_LEAD_NANOS = 250_000_000L;
+    private static final long SILENT_PREROLL_NANOS = framesToNanos(Exp3SyncStream.SILENT_PREROLL_FRAMES);
     private static final int FINAL_INACTIVE_TICKS = 10;
 
     private static final List<Exp3ScheduledSound> sounds = new ArrayList<>();
@@ -92,8 +94,9 @@ public final class Exp3ScheduledController {
 
         lastOutcome = "scheduled-started";
         HighAudio.LOGGER.info(
-            "[EXP-003] scheduled trial requested token={} count={} leadNanos={} silentPrerollFrames={} soundDebug={}",
-            token, count, DIAGNOSTIC_LEAD_NANOS, Exp3SyncStream.SILENT_PREROLL_FRAMES, safeDebugString()
+            "[EXP-003] scheduled trial requested token={} count={} mediaZeroLeadNanos={} silentPrerollFrames={} silentPrerollNanos={} soundDebug={}",
+            token, count, DIAGNOSTIC_MEDIA_ZERO_LEAD_NANOS, Exp3SyncStream.SILENT_PREROLL_FRAMES,
+            SILENT_PREROLL_NANOS, safeDebugString()
         );
         return "EXP-003 scheduled diagnostic started for " + count + " source(s)";
     }
@@ -121,16 +124,62 @@ public final class Exp3ScheduledController {
         ));
 
         if (captureCount == trial.count()) {
-            var ids = orderedSourceIds(trial);
-            var result = Exp3TimingPrimitives.startScheduled(event.getEngine(), ids, DIAGNOSTIC_LEAD_NANOS);
-            trial.targetDeviceClockNs = result.targetDeviceClockNs();
-            trial.armed = result.success();
-            pendingEvents.add(new ArmEvent(
-                trial.token(), result.success(), result.alError(), result.callNanos(),
-                result.targetDeviceClockNs(), result.detail(), Thread.currentThread().getName()
-            ));
+            armScheduledTrial(trial, event.getEngine());
             measureAndEnqueue(trial, "armed");
         }
+    }
+
+    /** Must run on Minecraft's sound thread. */
+    private static void armScheduledTrial(ActiveTrial trial, SoundEngine engine) {
+        var ids = orderedSourceIds(trial);
+        var capability = Exp3TimingPrimitives.inspect(engine);
+
+        Exp3TimingPrimitives.StartResult result;
+        long sourceStartClockNs = -1L;
+        long mediaZeroRenderClockNs = -1L;
+        long estimatedMediaZeroOutputClockNs = -1L;
+
+        if (!capability.available()) {
+            result = new Exp3TimingPrimitives.StartResult(
+                false, AL10.AL_INVALID_OPERATION, 0L, -1L,
+                "scheduled-unavailable:" + capability.detail()
+            );
+        } else {
+            try {
+                mediaZeroRenderClockNs = Math.addExact(
+                    capability.deviceClockNs(), DIAGNOSTIC_MEDIA_ZERO_LEAD_NANOS
+                );
+                sourceStartClockNs = Math.subtractExact(mediaZeroRenderClockNs, SILENT_PREROLL_NANOS);
+                estimatedMediaZeroOutputClockNs = Math.addExact(
+                    mediaZeroRenderClockNs, Math.max(0L, capability.deviceLatencyNs())
+                );
+
+                if (sourceStartClockNs <= capability.deviceClockNs()) {
+                    result = new Exp3TimingPrimitives.StartResult(
+                        false, AL10.AL_INVALID_VALUE, 0L, sourceStartClockNs,
+                        "insufficient-lead-for-preroll"
+                    );
+                } else {
+                    result = Exp3TimingPrimitives.startScheduledAt(engine, ids, sourceStartClockNs);
+                }
+            } catch (ArithmeticException exception) {
+                result = new Exp3TimingPrimitives.StartResult(
+                    false, AL10.AL_INVALID_VALUE, 0L, -1L, "clock-overflow"
+                );
+            }
+        }
+
+        trial.sourceStartDeviceClockNs = sourceStartClockNs;
+        trial.mediaZeroRenderClockNs = mediaZeroRenderClockNs;
+        trial.estimatedMediaZeroOutputClockNs = estimatedMediaZeroOutputClockNs;
+        trial.deviceLatencyNs = capability.deviceLatencyNs();
+        trial.armed = result.success();
+
+        pendingEvents.add(new ArmEvent(
+            trial.token(), result.success(), result.alError(), result.callNanos(),
+            sourceStartClockNs, mediaZeroRenderClockNs, estimatedMediaZeroOutputClockNs,
+            capability.deviceLatencyNs(), result.detail(), Thread.currentThread().getName()
+        ));
     }
 
     public static void tick() {
@@ -153,11 +202,11 @@ public final class Exp3ScheduledController {
             }
             if (!sampleNearTargetScheduled && sinceArm >= 5) {
                 sampleNearTargetScheduled = true;
-                scheduleMeasurement(trial, "near-target");
+                scheduleMeasurement(trial, "near-media-zero");
             }
             if (!samplePostTargetScheduled && sinceArm >= 7) {
                 samplePostTargetScheduled = true;
-                scheduleMeasurement(trial, "post-target");
+                scheduleMeasurement(trial, "post-media-zero");
             }
             if (!sampleLateScheduled && sinceArm >= 12) {
                 sampleLateScheduled = true;
@@ -190,7 +239,8 @@ public final class Exp3ScheduledController {
         return "EXP-003 scheduled status: count=" + trial.count()
             + ", captures=" + captures + "/" + trial.count()
             + ", armed=" + trial.armed
-            + ", targetDeviceClockNs=" + trial.targetDeviceClockNs
+            + ", sourceStartDeviceClockNs=" + trial.sourceStartDeviceClockNs
+            + ", mediaZeroRenderClockNs=" + trial.mediaZeroRenderClockNs
             + ", active=" + activeSoundCount();
     }
 
@@ -228,21 +278,32 @@ public final class Exp3ScheduledController {
         var ids = orderedSourceIds(trial);
         if (ids.length != trial.count()) return;
 
-        var offsets = new int[ids.length];
+        var rawOffsets = new double[ids.length];
+        var mediaOffsets = new double[ids.length];
+        var sourceClocks = new long[ids.length];
+        var valid = new boolean[ids.length];
         var playing = 0;
         var paused = 0;
         var initial = 0;
         var stopped = 0;
-        var min = Integer.MAX_VALUE;
-        var max = Integer.MIN_VALUE;
+        var validSamples = 0;
+        var referenceClockNs = Long.MIN_VALUE;
 
         for (var i = 0; i < ids.length; i++) {
-            var offset = sampleOffset(ids[i]);
-            offsets[i] = offset;
-            if (offset >= 0) {
-                min = Math.min(min, offset);
-                max = Math.max(max, offset);
+            var sample = Exp3TimingPrimitives.sampleOffsetClock(ids[i]);
+            valid[i] = sample.success();
+            if (sample.success()) {
+                rawOffsets[i] = sample.sampleOffsetFrames();
+                mediaOffsets[i] = rawOffsets[i] - Exp3SyncStream.SILENT_PREROLL_FRAMES;
+                sourceClocks[i] = sample.deviceClockNs();
+                referenceClockNs = Math.max(referenceClockNs, sample.deviceClockNs());
+                validSamples++;
+            } else {
+                rawOffsets[i] = Double.NaN;
+                mediaOffsets[i] = Double.NaN;
+                sourceClocks[i] = -1L;
             }
+
             var state = AL10.alGetSourcei(ids[i], AL10.AL_SOURCE_STATE);
             if (state == AL10.AL_PLAYING) playing++;
             else if (state == AL10.AL_PAUSED) paused++;
@@ -250,19 +311,37 @@ public final class Exp3ScheduledController {
             else if (state == AL10.AL_STOPPED) stopped++;
         }
 
-        var capability = trial.engine == null ? null : Exp3TimingPrimitives.inspect(trial.engine);
-        var clockNs = capability == null ? -1L : capability.deviceClockNs();
-        var targetDeltaNs = clockNs < 0 || trial.targetDeviceClockNs < 0
+        var compensatedMediaOffsets = new double[ids.length];
+        Arrays.fill(compensatedMediaOffsets, Double.NaN);
+        var minCompensated = Double.POSITIVE_INFINITY;
+        var maxCompensated = Double.NEGATIVE_INFINITY;
+        if (referenceClockNs != Long.MIN_VALUE) {
+            for (var i = 0; i < ids.length; i++) {
+                if (!valid[i]) continue;
+                var elapsedFramesToReference = (referenceClockNs - sourceClocks[i])
+                    * (double) Exp3SyncStream.SAMPLE_RATE / 1_000_000_000.0;
+                var compensated = mediaOffsets[i] + elapsedFramesToReference;
+                compensatedMediaOffsets[i] = compensated;
+                minCompensated = Math.min(minCompensated, compensated);
+                maxCompensated = Math.max(maxCompensated, compensated);
+            }
+        }
+
+        var spread = validSamples == ids.length && validSamples > 0
+            ? maxCompensated - minCompensated
+            : -1.0;
+        var mediaZeroTargetDeltaNs = referenceClockNs == Long.MIN_VALUE || trial.mediaZeroRenderClockNs < 0
             ? Long.MIN_VALUE
-            : trial.targetDeviceClockNs - clockNs;
-        var spread = min == Integer.MAX_VALUE ? -1 : max - min;
+            : trial.mediaZeroRenderClockNs - referenceClockNs;
 
         pendingEvents.add(new SampleEvent(
-            trial.token(), stage,
-            min == Integer.MAX_VALUE ? -1 : min,
-            max == Integer.MIN_VALUE ? -1 : max,
-            spread, playing, paused, initial, stopped,
-            clockNs, targetDeltaNs, Arrays.toString(offsets), Thread.currentThread().getName()
+            trial.token(), stage, validSamples, spread,
+            playing, paused, initial, stopped,
+            referenceClockNs == Long.MIN_VALUE ? -1L : referenceClockNs,
+            mediaZeroTargetDeltaNs,
+            trial.deviceLatencyNs,
+            Arrays.toString(rawOffsets), Arrays.toString(compensatedMediaOffsets),
+            Thread.currentThread().getName()
         ));
     }
 
@@ -285,17 +364,19 @@ public final class Exp3ScheduledController {
                 armTick = trialTicks;
                 if (!arm.success()) stopAfterArmFailure = true;
                 HighAudio.LOGGER.info(
-                    "[EXP-003] scheduled arm token={} count={} success={} alError={} callNanos={} targetDeviceClockNs={} detail={} thread={}",
+                    "[EXP-003] scheduled arm token={} count={} success={} alError={} callNanos={} sourceStartDeviceClockNs={} mediaZeroRenderClockNs={} estimatedMediaZeroOutputClockNs={} deviceLatencyNs={} detail={} thread={}",
                     trial.token(), trial.count(), arm.success(), arm.alError(), arm.callNanos(),
-                    arm.targetDeviceClockNs(), arm.detail(), arm.thread()
+                    arm.sourceStartDeviceClockNs(), arm.mediaZeroRenderClockNs(),
+                    arm.estimatedMediaZeroOutputClockNs(), arm.deviceLatencyNs(), arm.detail(), arm.thread()
                 );
             } else if (event instanceof SampleEvent sample) {
                 HighAudio.LOGGER.info(
-                    "[EXP-003] scheduled sample token={} count={} stage={} minOffsetSamples={} maxOffsetSamples={} spreadSamples={} spreadMs={} statesPlaying={} statesPaused={} statesInitial={} statesStopped={} deviceClockNs={} targetDeltaNs={} offsets={} thread={}",
-                    trial.token(), trial.count(), sample.stage(), sample.minOffset(), sample.maxOffset(),
-                    sample.spread(), samplesToMs(sample.spread()), sample.playing(), sample.paused(),
-                    sample.initial(), sample.stopped(), sample.deviceClockNs(), sample.targetDeltaNs(),
-                    sample.offsets(), sample.thread()
+                    "[EXP-003] scheduled sample token={} count={} stage={} validClockSamples={}/{} clockCompensatedSpreadSamples={} spreadMs={} statesPlaying={} statesPaused={} statesInitial={} statesStopped={} referenceDeviceClockNs={} mediaZeroTargetDeltaNs={} deviceLatencyNs={} rawOffsetsFrames={} compensatedMediaOffsetsFrames={} thread={}",
+                    trial.token(), trial.count(), sample.stage(), sample.validClockSamples(), trial.count(),
+                    sample.clockCompensatedSpreadSamples(), samplesToMs(sample.clockCompensatedSpreadSamples()),
+                    sample.playing(), sample.paused(), sample.initial(), sample.stopped(),
+                    sample.referenceDeviceClockNs(), sample.mediaZeroTargetDeltaNs(), sample.deviceLatencyNs(),
+                    sample.rawOffsetsFrames(), sample.compensatedMediaOffsetsFrames(), sample.thread()
                 );
             } else if (event instanceof FailureEvent failure) {
                 HighAudio.LOGGER.warn(
@@ -309,9 +390,10 @@ public final class Exp3ScheduledController {
     private static void finalizeTrial(ActiveTrial trial) {
         if (activeTrial != trial) return;
         HighAudio.LOGGER.info(
-            "[EXP-003] scheduled trial final token={} count={} captures={}/{} armed={} targetDeviceClockNs={} maxPrePauseOffsetSamples={} maxPostRewindOffsetSamples={} closedStreams={} soundDebug={}",
-            trial.token(), trial.count(), captures, trial.count(), trial.armed, trial.targetDeviceClockNs,
-            maxPrePauseOffset, maxPostRewindOffset, closedStreamCount(), safeDebugString()
+            "[EXP-003] scheduled trial final token={} count={} captures={}/{} armed={} sourceStartDeviceClockNs={} mediaZeroRenderClockNs={} estimatedMediaZeroOutputClockNs={} deviceLatencyNs={} maxPrePauseOffsetSamples={} maxPostRewindOffsetSamples={} closedStreams={} soundDebug={}",
+            trial.token(), trial.count(), captures, trial.count(), trial.armed,
+            trial.sourceStartDeviceClockNs, trial.mediaZeroRenderClockNs, trial.estimatedMediaZeroOutputClockNs,
+            trial.deviceLatencyNs, maxPrePauseOffset, maxPostRewindOffset, closedStreamCount(), safeDebugString()
         );
         lastOutcome = trial.armed ? "scheduled-complete" : "scheduled-arm-failed";
         sounds.clear();
@@ -358,8 +440,12 @@ public final class Exp3ScheduledController {
         }
     }
 
-    private static double samplesToMs(int samples) {
+    private static double samplesToMs(double samples) {
         return samples < 0 ? -1.0 : samples * 1000.0 / Exp3SyncStream.SAMPLE_RATE;
+    }
+
+    private static long framesToNanos(long frames) {
+        return Math.round(frames * 1_000_000_000.0 / Exp3SyncStream.SAMPLE_RATE);
     }
 
     private static final class ActiveTrial {
@@ -369,7 +455,10 @@ public final class Exp3ScheduledController {
         private final AtomicInteger captureCount = new AtomicInteger();
         private volatile SoundEngine engine;
         private volatile boolean armed;
-        private volatile long targetDeviceClockNs = -1L;
+        private volatile long sourceStartDeviceClockNs = -1L;
+        private volatile long mediaZeroRenderClockNs = -1L;
+        private volatile long estimatedMediaZeroOutputClockNs = -1L;
+        private volatile long deviceLatencyNs = -1L;
 
         private ActiveTrial(long token, int count) {
             this.token = token;
@@ -391,13 +480,33 @@ public final class Exp3ScheduledController {
     ) implements DiagnosticEvent {}
 
     private record ArmEvent(
-        long token, boolean success, int alError, long callNanos, long targetDeviceClockNs, String detail, String thread
+        long token,
+        boolean success,
+        int alError,
+        long callNanos,
+        long sourceStartDeviceClockNs,
+        long mediaZeroRenderClockNs,
+        long estimatedMediaZeroOutputClockNs,
+        long deviceLatencyNs,
+        String detail,
+        String thread
     ) implements DiagnosticEvent {}
 
     private record SampleEvent(
-        long token, String stage, int minOffset, int maxOffset, int spread,
-        int playing, int paused, int initial, int stopped,
-        long deviceClockNs, long targetDeltaNs, String offsets, String thread
+        long token,
+        String stage,
+        int validClockSamples,
+        double clockCompensatedSpreadSamples,
+        int playing,
+        int paused,
+        int initial,
+        int stopped,
+        long referenceDeviceClockNs,
+        long mediaZeroTargetDeltaNs,
+        long deviceLatencyNs,
+        String rawOffsetsFrames,
+        String compensatedMediaOffsetsFrames,
+        String thread
     ) implements DiagnosticEvent {}
 
     private record FailureEvent(long token, String stage, String detail) implements DiagnosticEvent {}
