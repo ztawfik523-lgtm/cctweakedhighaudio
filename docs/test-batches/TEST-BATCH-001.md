@@ -54,11 +54,11 @@ Before running the gate, ensure CC:T's `disabled_generic_methods` setting is not
 
 1. **Direct speaker / initial** — normal speaker directly beside a computer. Run the script and save output. Confirm the native note/sound/audio checks are audible where applicable.
 2. **Direct detach/reattach** — reboot the computer or otherwise detach/reattach without replacing the speaker, rerun, and compare diagnostics while the same block remains.
-3. **Wired network** — expose that same speaker through wired modems, run against its remote name, and compare diagnostics with direct access. HighAudio must not create a second speaker peripheral.
-4. **Chunk unload/reload** — unload the speaker chunk, return, rerun, and confirm method exposure still works.
+3. **Wired network** — expose a real normal speaker through wired modems, run against its remote name, and confirm method/native behavior. Using the same physical speaker as the direct test is useful for identity observation but is not required to prove the wired GenericSource path.
+4. **Chunk unload/reload** — force a real unload rather than relying on waiting near world spawn. In a disposable/test world, record `/gamerule spawnChunkRadius`, temporarily set `/gamerule spawnChunkRadius 0`, move/teleport well outside the speaker's player-loaded range, return, rerun, then restore the previous gamerule value.
 5. **Break/re-place** — break and place a new speaker at the same coordinates, rerun, and record identity behavior. This observes lifecycle semantics; it does not define the future HighAudio `EmitterId` policy.
 6. **Turtle speaker** — run on a turtle with speaker upgrade; record visibility, emitter kind, runtime class, and native behavior.
-7. **Pocket speaker** — if practical in the same session, repeat for a pocket computer with speaker upgrade.
+7. **Pocket speaker** — only test this on a pocket computer which actually has CC:T's speaker upgrade installed. A pocket computer without that upgrade has no `PocketSpeakerPeripheral`; wireless access to some other speaker does not substitute for this case. If such a pocket is not practical to obtain in the same session, record it as not tested rather than as a failure.
 
 For every run, preserve corresponding server `[EXP-001] highAudioProbe ...` log lines where practical.
 
@@ -71,12 +71,11 @@ Detailed evidence is recorded in:
 Current 21.1.247 assessment:
 
 - **PASS:** real direct block speaker exposes/calls `highAudioProbe` and completes the native `playNote` / `playSound` / `playAudio` / `stop` sequence.
-- **PASS:** real wired remote speaker (`speaker_27`) exposes/calls `highAudioProbe` and completes the native sequence.
+- **PASS:** real wired remote speaker (`speaker_27`) exposes/calls `highAudioProbe` and completes the native sequence. The user clarified it was intentionally a different placed speaker, so its different identity is expected.
 - **PASS:** real turtle speaker exposes/calls `highAudioProbe` and completes the native sequence.
 - **PASS:** newly-created block/turtle speaker peripheral instances still receive the GenericSource method and complete the native sequence.
-- **PENDING:** the supplied logs do not prove the wired remote was the same physical speaker previously tested directly.
-- **PENDING:** the move-away/return attempt did not prove a real chunk unload/reconstruction; the original direct speaker retained the exact same Java object identity and CC:T native source UUID.
-- **PENDING:** pocket speaker exposure was not observed.
+- **PENDING:** the move-away/return attempt did not prove a real chunk unload/reconstruction; the original direct speaker retained the exact same Java object identity and CC:T native source UUID. The setup was near world spawn, so a deterministic `spawnChunkRadius=0` retest is preferred.
+- **NOT TESTED / NO TARGET:** the pocket computer in the session had no speaker upgrade, so no pocket speaker peripheral existed to probe.
 - **AMBIGUOUS:** the supplied logs show peripheral recreation, but do not identify the exact user action which caused each recreation, so reboot/detach and break/re-place labels are not assigned without proof.
 
 ## NeoForge 21.1.248 — compatibility subset
@@ -84,10 +83,10 @@ Current 21.1.247 assessment:
 Repeat:
 
 1. normal direct speaker;
-2. same speaker through wired modem;
+2. a real wired speaker;
 3. one detach/reattach or reboot;
 4. turtle visibility if available;
-5. pocket visibility if already practical.
+5. pocket visibility only if a speaker-upgraded pocket computer is already practical.
 
 Automatic CI already covers build, generated-call behavior, speaker-only targeting, registration, the live CC:T method registry, and both development-server and installed packaged-JAR server startup on both exact NeoForge versions. This manual subset focuses on real Lua exposure, native behavior, and peripheral lifecycle behavior.
 
@@ -97,7 +96,8 @@ Automatic CI already covers build, generated-call behavior, speaker-only targeti
 - native `playNote`, `playSound`, `playAudio`, and `stop` remain present and usable;
 - direct and wired access work without a duplicate HighAudio peripheral;
 - lifecycle transitions do not lose/corrupt method exposure;
-- turtle/pocket exposure is observed rather than guessed;
+- turtle exposure is observed rather than guessed;
+- pocket exposure is either observed on a speaker-upgraded pocket computer or explicitly recorded as unavailable/not tested according to the chosen gate scope;
 - both exact NeoForge versions pass the strengthened automatic evidence and their manual coverage above.
 
 After the batch, update `PROTOTYPES.md`, `ROADMAP.md`, and ADR-0008. `VERIFIED-FACTS.md` only receives facts actually established by evidence.
