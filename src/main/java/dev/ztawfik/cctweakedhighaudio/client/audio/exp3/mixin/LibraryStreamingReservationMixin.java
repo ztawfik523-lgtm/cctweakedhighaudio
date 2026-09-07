@@ -22,6 +22,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * constructor arguments. If the actual constructor arguments do not match those
  * derived vanilla values, initialization fails loudly rather than silently composing
  * with an unknown audio-pool transform.</p>
+ *
+ * <p>The experimental rebalance is deliberately conservative on lower-capacity
+ * devices: it is enabled only when vanilla already reaches its normal maximum
+ * streaming reservation of eight channels. A device for which vanilla derives fewer
+ * than eight streaming channels keeps the vanilla split instead of sacrificing a
+ * disproportionate part of its static/SFX pool.</p>
  */
 @Mixin(Library.class)
 public abstract class LibraryStreamingReservationMixin {
@@ -46,6 +52,8 @@ public abstract class LibraryStreamingReservationMixin {
     private int highAudio$newStatic = -1;
     @Unique
     private int highAudio$newStreaming = -1;
+    @Unique
+    private boolean highAudio$rebalanceApplied;
 
     @Shadow
     private int getChannelCount() {
@@ -76,14 +84,19 @@ public abstract class LibraryStreamingReservationMixin {
         );
 
         int combined = originalStatic + originalStreaming;
-        int maximumStreamingWithoutShrinkingStaticBelowFloor = Math.max(
-            originalStreaming,
-            combined - HIGHAUDIO_VANILLA_STATIC_MIN
-        );
-        int newStreaming = Math.max(
-            originalStreaming,
-            Math.min(HIGHAUDIO_TARGET_STREAMING, maximumStreamingWithoutShrinkingStaticBelowFloor)
-        );
+        boolean eligibleForRebalance = originalStreaming == HIGHAUDIO_VANILLA_STREAMING_MAX;
+
+        int newStreaming = originalStreaming;
+        if (eligibleForRebalance) {
+            int maximumStreamingWithoutShrinkingStaticBelowFloor = Math.max(
+                originalStreaming,
+                combined - HIGHAUDIO_VANILLA_STATIC_MIN
+            );
+            newStreaming = Math.max(
+                originalStreaming,
+                Math.min(HIGHAUDIO_TARGET_STREAMING, maximumStreamingWithoutShrinkingStaticBelowFloor)
+            );
+        }
         int newStatic = combined - newStreaming;
 
         this.highAudio$reportedChannelCount = reported;
@@ -91,6 +104,7 @@ public abstract class LibraryStreamingReservationMixin {
         this.highAudio$originalStreaming = originalStreaming;
         this.highAudio$newStatic = newStatic;
         this.highAudio$newStreaming = newStreaming;
+        this.highAudio$rebalanceApplied = newStreaming != originalStreaming;
 
         return reported;
     }
@@ -138,13 +152,14 @@ public abstract class LibraryStreamingReservationMixin {
         int originalCombined = this.highAudio$originalStatic + this.highAudio$originalStreaming;
         int newCombined = this.highAudio$newStatic + this.highAudio$newStreaming;
         HighAudio.LOGGER.info(
-            "[EXP-003] streaming reservation rebalance reportedChannelCount={} originalStatic={} originalStreaming={} newStatic={} newStreaming={} combinedPreserved={} targetStreaming={}",
+            "[EXP-003] streaming reservation rebalance reportedChannelCount={} originalStatic={} originalStreaming={} newStatic={} newStreaming={} combinedPreserved={} rebalanceApplied={} targetStreaming={}",
             this.highAudio$reportedChannelCount,
             this.highAudio$originalStatic,
             this.highAudio$originalStreaming,
             this.highAudio$newStatic,
             this.highAudio$newStreaming,
             originalCombined == newCombined,
+            this.highAudio$rebalanceApplied,
             HIGHAUDIO_TARGET_STREAMING
         );
     }
