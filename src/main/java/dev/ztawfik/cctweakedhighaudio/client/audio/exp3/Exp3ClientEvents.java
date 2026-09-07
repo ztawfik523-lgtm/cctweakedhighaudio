@@ -22,12 +22,14 @@ public final class Exp3ClientEvents {
     public static void onPlayStreaming(PlayStreamingSourceEvent event) {
         Exp3CapacityController.onPlayStreaming(event);
         Exp3SyncController.onPlayStreaming(event);
+        Exp3ScheduledController.onPlayStreaming(event);
     }
 
     @SubscribeEvent
     public static void onClientTick(ClientTickEvent.Post event) {
         Exp3CapacityController.tick();
         Exp3SyncController.tick();
+        Exp3ScheduledController.tick();
     }
 
     @SubscribeEvent
@@ -41,17 +43,26 @@ public final class Exp3ClientEvents {
                             IntegerArgumentType.getInteger(context, "count")
                         )))))
                 .then(Commands.literal("sync_compare").executes(context -> respond(Exp3SyncController.startCompare())))
+                .then(Commands.literal("scheduled")
+                    .then(Commands.argument("count", IntegerArgumentType.integer(1, 16))
+                        .executes(context -> respond(Exp3ScheduledController.run(
+                            IntegerArgumentType.getInteger(context, "count")
+                        )))))
                 .then(Commands.literal("stop").executes(context -> respond(stop())))
                 .then(Commands.literal("status").executes(context -> respond(status())))
         );
     }
 
     private static String stop() {
-        return Exp3SyncController.isBusy() ? Exp3SyncController.stop() : Exp3CapacityController.stop();
+        if (Exp3ScheduledController.isBusy()) return Exp3ScheduledController.stop();
+        if (Exp3SyncController.isBusy()) return Exp3SyncController.stop();
+        return Exp3CapacityController.stop();
     }
 
     private static String status() {
-        return Exp3SyncController.isBusy() ? Exp3SyncController.status() : Exp3CapacityController.status();
+        if (Exp3ScheduledController.isBusy()) return Exp3ScheduledController.status();
+        if (Exp3SyncController.isBusy()) return Exp3SyncController.status();
+        return Exp3CapacityController.status();
     }
 
     private static int respond(String message) {
