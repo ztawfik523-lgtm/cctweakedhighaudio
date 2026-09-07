@@ -14,7 +14,8 @@ A milestone is complete only when its **gate** passes. A partial prototype is no
 ## MILESTONE-000 — repository/documentation/bootstrap
 
 **Status:** COMPLETE  
-**Gate:** `GATE-000: PASSED`
+**Gate:** `GATE-000: PASSED`  
+**Re-audit:** PASSED on 2026-09-07
 
 **Goal:** make the target stack and architecture assumptions explicit before implementation.
 
@@ -26,17 +27,22 @@ Deliverables completed:
 - architecture docs, ADRs, fact ledger, prototype ledger, risk ledger;
 - minimal NeoForge/CC:T build scaffold;
 - minimal mod entrypoint and required-CC:T metadata;
+- committed Gradle 9.2.1 wrapper for reproducible local/CI builds;
 - GitHub Actions build matrix for NeoForge 21.1.247 and 21.1.248;
+- packaged-JAR metadata/entrypoint validation in CI;
 - canonical batched-manual-testing policy in `docs/TESTING.md`.
 
-**GATE-000 evidence:**
+**GATE-000 re-audit evidence:**
 
 - docs identify accepted vs proposed vs experiment-required decisions;
-- implementation uses the pinned CC:T 1.120.0 Maven coordinates (`common-api`, `forge-api`, runtime `forge`) rather than newer-source coordinates;
+- exact CC:T tag `v1.21.1-1.120.0` confirms the pinned Maven coordinates (`common-api`, `forge-api`, runtime `forge`) and explicitly warns that internal/mixin use is not stable API;
+- official NeoForge 1.21.1 NeoGradle MDK conventions match the scaffold's Java 21, UserDev, Gradle 9.2.1, Parchment, and loader-version setup;
 - Java 21 and Minecraft 1.21.1 are explicit in build metadata;
-- CI run `34072958488` passed on both NeoForge `21.1.247` and `21.1.248`;
-- validated build-relevant commit: `562c1200624ce0889344a277b8375eb0a2e5be8b`;
-- both CI legs produced uploaded JAR artifacts;
+- committed Gradle wrapper is used by CI rather than a separately installed Gradle executable;
+- CI run `34075390502` passed on both NeoForge `21.1.247` and `21.1.248`;
+- validated build-relevant commit: `2844a80db4df4795ede812d33859f2f1604e8b87`;
+- both CI legs passed wrapper execution, compilation, packaged `neoforge.mods.toml` validation, packaged `HighAudio.class` validation, and JAR artifact upload;
+- CI rejects unexpanded metadata placeholders and verifies exact CC:T 1.120.0 / Minecraft 1.21.1 requirements plus the declared NeoForge compatibility range;
 - **manual Minecraft launches used for MILESTONE-000: 0**.
 
 Manual runtime testing from this point follows `docs/TESTING.md`: automatic compile/CI checks remain frequent, while user-run Minecraft tests are accumulated into broader milestone-gate sessions unless an architecture-blocking runtime question requires an earlier probe.
