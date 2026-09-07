@@ -1,8 +1,8 @@
 # ADR-0010 — Playback timing is intent-driven
 
-**Status:** Proposed  
+**Status:** Proposed — `immediate`/`together` validated for M3; optional real-device `scheduled` guarantee deferred  
 **Date:** 2026-09-07  
-**Milestone:** MILESTONE-003 / EXP-003
+**Milestone:** MILESTONE-003 / EXP-003; carried forward into later session/synchronization milestones
 
 ## Context
 
@@ -101,24 +101,51 @@ Minecraft/SPR compatibility remains based on retaining Minecraft-owned `Channel`
 
 ## EXP-003 implementation boundary after re-audit
 
-The diagnostic branch now separates three timestamps/positions which must not be conflated:
+The diagnostic branch separates three timestamps/positions which must not be conflated:
 
 1. **source-start device clock** — when OpenAL begins advancing the source;
 2. **media-zero renderer clock** — source start plus any hidden preparation preroll;
 3. **estimated physical-output media-zero time** — media-zero renderer clock plus current device output latency.
 
-The scheduled diagnostic also uses `AL_SAMPLE_OFFSET_CLOCK_SOFT`, which reports source offset and device clock atomically, and compensates sequential source-query timestamps before calculating group spread. This is stronger evidence than comparing separately queried sample offsets to a later device-clock read.
+The scheduled diagnostic uses `AL_SAMPLE_OFFSET_CLOCK_SOFT`, which reports source offset and device clock atomically, and compensates sequential source-query timestamps before calculating group spread. The final target-aware correction also avoids treating pre-start time as playback advancement while a future-scheduled source is waiting at its requested device-clock start.
 
 All such OpenAL operations remain on Minecraft's sound thread and operate only on Minecraft-owned sources. HighAudio still does not create/delete OpenAL sources, devices, or contexts.
 
+Hardened automatic candidate:
+
+```text
+commit: ecb6c9d8a787184033f08082f888a0283b1d6ec5
+CI run: 34121266402
+NeoForge 21.1.247: PASS
+NeoForge 21.1.248: PASS
+```
+
+The package/bytecode audit requires the real vector/timed-start/device-clock/source-clock calls and rejects HighAudio source/device/context ownership operations.
+
+## MILESTONE-003 relationship
+
+`GATE-003` can close while this ADR remains Proposed.
+
+The architecture-selecting M3 requirements now have real-device evidence:
+
+- vanilla streaming capacity is measured;
+- the 16-stream target is repeatedly met through a conservative Minecraft-owned reservation policy;
+- `together`/vector local start is measured through 16 sources;
+- ordinary high-level/immediate start is also measured in the ready-stream case;
+- preparation/reset and cleanup behavior are instrumented.
+
+`scheduled` answers a different question: whether a future media/session timeline can demand that media sample zero align to an explicit renderer/session target. Automatic capability and implementation evidence is sufficient to retain that candidate without making another manual Minecraft launch an M3 prerequisite.
+
+Keeping the ADR Proposed is deliberate: HighAudio should not claim a real-device scheduled timing guarantee before that guarantee is needed and measured in a production-like session/timeline path.
+
 ## Validation required before acceptance
 
-Before this ADR is Accepted:
+Before this ADR is Accepted as the complete three-intent timing contract:
 
-1. exact `.247` and `.248` compilation/package/client-init must prove the scheduled-start bindings/accessors are valid;
-2. the initialized client device must report the required timed-start/device-clock capabilities before scheduled mode is treated as available;
-3. scheduled start must be measured in a consolidated EXP-003 real-client test only if that end-to-end renderer behavior remains architecture-blocking after automatic checks;
-4. preparation must not leak audible content;
+1. exact `.247` and `.248` compilation/package/client-init must prove the scheduled-start bindings/accessors are valid — **PASS**;
+2. the initialized client device must report the required timed-start/device-clock capabilities before scheduled mode is treated as available — **PASS automatically on the exact target matrix**;
+3. scheduled start must be measured on a real audio device when a later session/timeline gate actually requires the end-to-end guarantee — **DEFERRED; not a GATE-003 blocker**;
+4. preparation must not leak audible content in that production-like real-device scheduled gate;
 5. the measured scheduled source group must preserve tight relative synchronization around media-zero;
 6. source-start, media-zero, and output-latency semantics must remain distinct in diagnostics and future session mapping;
 7. unavailable scheduled capability must fail explicitly unless a future caller opts into a weaker fallback;

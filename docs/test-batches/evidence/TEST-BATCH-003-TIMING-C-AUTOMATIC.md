@@ -1,6 +1,6 @@
 # TEST-BATCH-003 timing C automatic evidence
 
-**Status:** PASS — capability + packaged scheduled harness; audible scheduled playback not manually run  
+**Status:** PASS — capability + hardened packaged scheduled harness; real-device scheduled playback deferred beyond GATE-003  
 **Date:** 2026-09-07  
 **Milestone:** MILESTONE-003 / EXP-003  
 **Branch:** `milestone-003-exp-003-timing-modes`
@@ -13,7 +13,7 @@ ADR-0010 separates timing by intent:
 - `together`: readiness barrier + core `alSourcePlayv` group start;
 - `scheduled`: readiness barrier + capability-gated `alSourcePlayAtTimevSOFT` device-clock start.
 
-This evidence covers the automatic feasibility boundary for `scheduled`. It does not claim audible real-device scheduled timing has been manually measured yet.
+This evidence covers the automatic feasibility and implementation-integrity boundary for `scheduled`. It does not claim audible real-device scheduled timing has been manually measured.
 
 ## Capability probe
 
@@ -44,7 +44,7 @@ available=true
 detail=ok
 ```
 
-and successfully queried `ALC_DEVICE_CLOCK_SOFT`. The CI OpenAL `No Output`/null backend returned an initial device-clock value of `0`; the extension permits an implementation-defined non-negative initial clock and this is treated only as successful API/device access, not as an audible-device timing measurement.
+and successfully queried the device clock. The CI OpenAL `No Output`/null backend returned an initial device-clock value of `0`; this is treated only as successful API/device access, not as an audible-device timing measurement.
 
 ### Corrected ALC capability boundary
 
@@ -58,9 +58,9 @@ alcIsExtensionPresent(currentDevice, "ALC_SOFT_device_clock")
 
 and then uses `SOFTDeviceClock.alcGetInteger64vSOFT(...)` only when the required AL/ALC capabilities are present.
 
-## Scheduled harness candidate
+## Initial scheduled harness candidate
 
-Code candidate including the diagnostic scheduled-start harness:
+Code candidate including the first diagnostic scheduled-start harness:
 
 ```text
 dc2fbaad0f383bbbbe9d17350c003b4e0a53a62f
@@ -88,24 +88,66 @@ Both matrix artifacts contained byte-identical HighAudio JARs:
 SHA-256 31829658ff85ad9153cd8a807d14a9520f331ff2297a59fa51ef339bcab3abba
 ```
 
-Packaged timing classes include:
+## Media-zero / clock / latency corrections
 
-- `Exp3TimingPrimitives`;
-- `Exp3TimedStartDiagnostics`;
-- `Exp3ScheduledSound`;
-- `Exp3ScheduledController`;
-- `SoundEngineLibraryAccessor`;
-- `LibraryDeviceAccessor`.
+The initial harness was subsequently strengthened before any real scheduled-device gate.
 
-Direct compiled-bytecode inspection confirmed expected timing operations:
+The current diagnostic distinguishes:
 
 ```text
-AL10.alSourcePlayv
-SOFTSourceStartDelay.alSourcePlayAtTimevSOFT
-ALC_SOFT_device_clock
+1. source-start device time
+2. media-zero renderer time
+3. estimated physical-output media-zero time
 ```
 
-and found none of the forbidden ownership operations in the new timing layer:
+The generated sync stream contains a 100 ms silent preroll because NeoForge exposes the `Channel` only after Minecraft has already initiated playback. That preroll is an internal preparation mechanism, not a user-facing delay. The scheduled controller subtracts the preroll from the requested renderer media-zero target so the public/session concept can remain "media sample zero at T".
+
+The current OpenAL device output latency is sampled separately. It is not folded into the renderer media-zero target; it is used only to record an estimated physical-output time.
+
+For relative group measurement, the diagnostic now queries:
+
+```text
+AL_SAMPLE_OFFSET_CLOCK_SOFT
+```
+
+which returns the source sample offset and its matching device-clock timestamp atomically. Each source is still queried sequentially, so the sampled offsets are normalized to a common reference device clock before spread is calculated.
+
+The final correction is target-aware. A future-scheduled source can report `AL_PLAYING` while its offset is still frozen before the requested source-start clock. Compensation therefore converts query-to-reference elapsed time into advancing frames only for the interval after the scheduled source-start clock.
+
+## Hardened timing candidate — PASS
+
+Current timing code candidate:
+
+```text
+ecb6c9d8a787184033f08082f888a0283b1d6ec5
+```
+
+CI run:
+
+```text
+34121266402
+```
+
+Result:
+
+```text
+NeoForge 21.1.247: PASS
+NeoForge 21.1.248: PASS
+workflow conclusion: success
+```
+
+The full automatic matrix passes compilation, packaged verification, development-client sound-engine initialization, accepted server regressions, packaged-JAR dedicated-server startup, and artifact production.
+
+The hardened package/bytecode audit deliberately checks the actual method calls because `javac` inlines static-final OpenAL enum values. It requires:
+
+```text
+alSourcePlayv
+alSourcePlayAtTimevSOFT
+alcGetInteger64vSOFT
+alGetSourcei64vSOFT
+```
+
+and rejects timing-layer ownership operations:
 
 ```text
 alGenSources
@@ -116,6 +158,8 @@ alcCreateContext
 alcDestroyContext
 ```
 
+The harness also aborts any active scheduled trial on `SoundEngineLoadEvent`, preventing old source/device state from surviving renderer reconstruction.
+
 Therefore HighAudio is still controlling timing of **Minecraft-owned** sources rather than introducing an independent OpenAL source/device/context lifecycle.
 
 ## Diagnostic behavior implemented
@@ -124,20 +168,23 @@ The scheduled harness can arm 1..16 Minecraft-owned generated-PCM streams with a
 
 - per-source capture;
 - pre-pause and post-rewind sample offsets;
-- scheduled target device clock;
+- source-start device clock;
+- renderer media-zero target clock;
+- estimated physical-output media-zero clock;
+- current device output latency;
 - OpenAL call error and duration;
-- source state/offset spread before, near, and after the target;
-- current device clock and target delta;
-- stream cleanup.
+- atomic source offset/device-clock samples;
+- target-aware clock-compensated relative group spread;
+- source states before/near/after media zero;
+- stream cleanup;
+- reload abort behavior.
 
-The diagnostic lead is intentionally a test constant, not the future public timing policy. Public/session scheduled time must refer to the meaningful media onset; any silent preparation preroll must be compensated internally.
+The diagnostic lead is intentionally a test constant, not the future public timing policy. Public/session scheduled time must refer to the meaningful media onset; any preparation preroll is compensated internally.
 
 ## Conclusion
 
-Scheduled device-clock playback is **compile-time and client-runtime feasible on the exact target stack**, and the harness required to measure it is packaged and clean. No user launch was needed to discover the capability boundary.
+Scheduled device-clock playback is **compile-time and initialized-client feasible on the exact target stack**, and the hardened harness/measurement machinery is packaged and automatically green. No user launch was needed to establish that capability and ownership boundary.
 
-Remaining evidence before ADR-0010 can call scheduled playback proven:
+A real-device scheduled timing guarantee is still **not claimed**. `ADR-0010` remains Proposed until a later production/session timeline gate needs that guarantee and validates it on a real device.
 
-- actual scheduled-source behavior on a real audio device (preferably bundled into a later consolidated M3 runtime gate rather than a standalone launch);
-- audible-preparation/no-leak confirmation under that consolidated gate;
-- final public fallback/error semantics remain deferred to the session/media API design.
+This remaining scheduled evidence is **not a GATE-003 blocker**. MILESTONE-003 already has real-device evidence for the architecture-selecting 16-stream capacity policy and the local `together` vector primitive. Closing M3 without another capability-only launch is therefore consistent with `docs/TESTING.md`'s minimum-manual-testing policy.

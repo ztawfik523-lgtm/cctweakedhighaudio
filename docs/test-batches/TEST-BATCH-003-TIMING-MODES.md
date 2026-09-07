@@ -1,6 +1,6 @@
 # TEST-BATCH-003 timing-mode addendum
 
-**Status:** C CAPABILITY + SCHEDULED HARNESS AUTO PASS — REAL SCHEDULED PLAYBACK NOT RUN  
+**Status:** TIMING PRIMITIVES AUTO PASS — GATE-003 CLOSED; REAL SCHEDULED PLAYBACK DEFERRED  
 **Milestone:** MILESTONE-003 / EXP-003  
 **Branch:** `milestone-003-exp-003-timing-modes`  
 **Decision:** `ADR-0010` Proposed
@@ -15,7 +15,7 @@ The project therefore no longer treats synchronization as one global A-vs-B choi
 |---|---|---|
 | `immediate` | play with minimum latency | normal Minecraft-owned start |
 | `together` | wait until required local participants are ready, then start together ASAP | Minecraft-owned sources + core `alSourcePlayv` |
-| `scheduled` | start at an explicit HighAudio/session timeline point | capability-gated device-clock `alSourcePlayAtTimevSOFT` |
+| `scheduled` | align media sample zero to an explicit HighAudio/session timeline point | capability-gated device-clock `alSourcePlayAtTimevSOFT` |
 
 The eventual public Lua/session names remain deferred. EXP-003 validates renderer primitives only.
 
@@ -57,10 +57,11 @@ The scheduled prototype remains narrow:
 1. read `SoundEngine.library`;
 2. read `Library.currentDevice`;
 3. feature-detect `AL_SOFT_source_start_delay`, `AL_SOFT_source_latency`, and `ALC_SOFT_device_clock` on Minecraft's sound thread;
-4. query the current device clock;
-5. provide a primitive capable of scheduling an existing Minecraft-owned source group at `deviceClock + lead`;
-6. do not create/delete OpenAL sources/devices/contexts;
-7. do not add production media/session/network behavior.
+4. query the current device clock and current output latency;
+5. schedule an existing Minecraft-owned source group at an explicit device-clock timestamp;
+6. keep renderer media-zero timing distinct from estimated physical-output timing;
+7. do not create/delete OpenAL sources/devices/contexts;
+8. do not add production media/session/network behavior.
 
 ## Automatic C capability gate — PASS
 
@@ -90,7 +91,7 @@ available=true
 detail=ok
 ```
 
-and the `ALC_DEVICE_CLOCK_SOFT` query returns successfully. The CI `No Output`/null OpenAL device reports an initial clock value of `0`, which is valid for a newly initialized device and is not treated as an audible-device timing measurement.
+and the device-clock query succeeds. The CI `No Output`/null OpenAL device reports an initial clock value of `0`, which is valid for a newly initialized device and is not treated as an audible-device timing measurement.
 
 A first version of the probe incorrectly read LWJGL's process/router `ALCCapabilities` and therefore reported `deviceClock=false` despite querying a real device handle. Re-evaluation corrected the check to call `alcIsExtensionPresent(currentDevice, "ALC_SOFT_device_clock")` on Minecraft's actual device. This is the canonical capability check.
 
@@ -102,9 +103,9 @@ Automatic capability conclusion:
 - the device clock can be queried from Minecraft's sound thread;
 - no manual Minecraft launch was required to establish this capability boundary.
 
-## Scheduled trial harness — AUTOMATIC PASS
+## Scheduled trial harness — automatic PASS
 
-Harness code candidate:
+Initial harness candidate:
 
 ```text
 dc2fbaad0f383bbbbe9d17350c003b4e0a53a62f
@@ -118,32 +119,45 @@ CI run:
 
 Both NeoForge 21.1.247 and 21.1.248 passed compilation/package checks, real client sound-engine initialization, accepted M1 server regression, packaged-JAR dedicated-server startup, and artifact upload with the diagnostic scheduled-start harness present.
 
-Both matrix artifacts produced byte-identical HighAudio JARs:
+The branch includes diagnostic-only `Exp3ScheduledSound` / `Exp3ScheduledController` code. It reuses Minecraft-owned channels and the same 100 ms silent-preroll PCM used by the earlier vector experiment, pauses/rewinds each captured source, then calls the capability-gated device-clock scheduled-start primitive once the required group is ready.
+
+## Media-zero and clock/latency hardening
+
+Later branch work corrected the scheduled diagnostic so its timestamps mean what the eventual session architecture needs them to mean.
+
+The diagnostic distinguishes:
 
 ```text
-SHA-256 31829658ff85ad9153cd8a807d14a9520f331ff2297a59fa51ef339bcab3abba
+source-start device clock
+media-zero renderer clock
+estimated media-zero physical-output clock
 ```
 
-The branch now includes diagnostic-only `Exp3ScheduledSound` / `Exp3ScheduledController` code. It reuses Minecraft-owned channels and the same 100 ms silent-preroll PCM used by the earlier vector experiment, pauses/rewinds each captured source, then calls the capability-gated device-clock scheduled-start primitive once the required group is ready.
+The 100 ms silent preroll is an internal preparation artifact. The renderer schedules source start one preroll earlier so the requested renderer target corresponds to the first media sample rather than the beginning of hidden silence. Current device output latency is recorded separately and is only used for an estimated physical-output timestamp.
 
-The diagnostic records:
+For source alignment measurement, the diagnostic uses `AL_SAMPLE_OFFSET_CLOCK_SOFT` so one OpenAL call returns a source's 32.32 fixed-point sample offset and the matching device-clock timestamp atomically. Because multiple sources still have to be queried sequentially, each sample is normalized to a common reference device clock before relative group spread is calculated.
 
-- capture count and pre-pause/post-rewind offsets;
-- scheduled target device-clock timestamp;
-- OpenAL error/call duration;
-- source state and relative sample-offset spread while still before the target, near the target, after the target, and later in playback;
-- current device clock and target-minus-current-clock delta;
-- natural/explicit cleanup.
+The final correction is target-aware. A future-scheduled source may already report `AL_PLAYING` while its sample offset remains frozen until the scheduled source-start device clock. Therefore query-to-reference elapsed time is converted to advancing sample frames only for the interval after that source-start clock.
 
-Direct bytecode inspection of the packaged candidate found the expected timing operations:
+Current hardened timing code candidate:
 
 ```text
-AL10.alSourcePlayv
-SOFTSourceStartDelay.alSourcePlayAtTimevSOFT
-ALC_SOFT_device_clock
+commit: ecb6c9d8a787184033f08082f888a0283b1d6ec5
+CI run: 34121266402
+NeoForge 21.1.247: PASS
+NeoForge 21.1.248: PASS
 ```
 
-and none of the forbidden ownership operations:
+The full automatic build/package/client/server matrix passed. The packaged bytecode audit checks the actual LWJGL method calls rather than Java enum constant names, which `javac` may inline numerically. It requires:
+
+```text
+alSourcePlayv
+alSourcePlayAtTimevSOFT
+alcGetInteger64vSOFT
+alGetSourcei64vSOFT
+```
+
+and rejects timing-layer ownership operations:
 
 ```text
 alGenSources
@@ -154,9 +168,7 @@ alcCreateContext
 alcDestroyContext
 ```
 
-Therefore the implementation remains timing control over Minecraft-owned sources, not a second OpenAL engine.
-
-The diagnostic command is an EXP-003 implementation hook only. It does **not** make scheduled playback the default and does not define the production Lua API.
+`SoundEngineLoadEvent` also aborts an in-flight scheduled diagnostic so no old source/device state is carried across renderer reconstruction.
 
 Canonical automatic evidence:
 
@@ -167,11 +179,16 @@ Canonical automatic evidence:
 - A normal one-speaker SFX remains `immediate` and gets no artificial synchronization delay.
 - A one-member `together` group should collapse to `immediate` because there is nothing local to synchronize against.
 - A one-member `scheduled` request remains meaningful if it targets a session/external timeline.
-- Scheduled lead time is adaptive; 100 ms is an example safety budget, not a fixed requirement.
-- If a silent preparation preroll is used, a public/session target time must describe **audible media sample zero**, not the beginning of the silent preroll. The renderer must compensate for any preroll internally.
-- If precise scheduled timing is requested but timed-start capability is unavailable, HighAudio should report that precise scheduling is unavailable rather than silently claiming B met a timestamp guarantee. A future public API may allow explicit fallback.
+- Scheduled lead time is adaptive; the current diagnostic lead is an internal safety budget, not a public fixed delay.
+- If a silent preparation preroll is used, a public/session target time must describe **audible media sample zero**, not the beginning of the silent preroll. The renderer compensates for any preroll internally.
+- Output latency is not renderer start time. A future public concept such as "heard at session time T" must account for local output latency without exposing raw OpenAL clocks to Lua.
+- If precise scheduled timing is requested but timed-start capability is unavailable, HighAudio should report that precise scheduling is unavailable rather than silently claiming a timestamp guarantee. A future public API may allow explicit fallback.
 - Initial start synchronization does not solve later streaming underruns/drift. Ongoing timeline/drift handling remains later work.
 
-## Minimum-manual-testing rule
+## GATE-003 relationship and minimum-manual-testing result
 
-No standalone user launch is justified merely to re-check C capability. Real scheduled-source behavior should be folded into a later consolidated M3 runtime gate only if it remains architecture-blocking after the rest of the automatic work is complete. A standalone capability-discovery launch is explicitly disallowed by `docs/TESTING.md`'s minimum-manual-testing policy.
+No standalone user launch is justified merely to re-check scheduled capability or the presence of the OpenAL timing bindings. More importantly, after the real Part A/Part A2/Part B evidence, real-device scheduled playback is no longer architecture-blocking for MILESTONE-003.
+
+GATE-003 closes using the measured capacity and local synchronized-start evidence plus the automatic scheduled feasibility proof. `ADR-0010` remains Proposed so the project does not claim a real-device scheduled timing guarantee which has not been run.
+
+If a later production session/timeline milestone needs exact `scheduled` semantics, that later gate should use one consolidated self-measuring real-device test which exercises the production readiness/timeline path. It should not resurrect a ladder of EXP-003 capability-only launches.
