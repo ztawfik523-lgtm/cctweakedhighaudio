@@ -13,23 +13,33 @@ A milestone is complete only when its **gate** passes. A partial prototype is no
 
 ## MILESTONE-000 — repository/documentation/bootstrap
 
+**Status:** COMPLETE  
+**Gate:** `GATE-000: PASSED`
+
 **Goal:** make the target stack and architecture assumptions explicit before implementation.
 
-Deliverables:
+Deliverables completed:
 
 - exact CC:T 1.120.0 source pin;
 - NeoForge 21.1.247 initial compile target;
-- explicit runtime matrix including 21.1.248;
+- explicit compatibility/build matrix including 21.1.248;
 - architecture docs, ADRs, fact ledger, prototype ledger, risk ledger;
-- minimal build/CI scaffold when implementation begins.
+- minimal NeoForge/CC:T build scaffold;
+- minimal mod entrypoint and required-CC:T metadata;
+- GitHub Actions build matrix for NeoForge 21.1.247 and 21.1.248;
+- canonical batched-manual-testing policy in `docs/TESTING.md`.
 
-**Gate GATE-000:**
+**GATE-000 evidence:**
 
-- docs identify which decisions are accepted vs proposed vs experiment-required;
-- no implementation is built against CC:T 1.120.2/current `main` by accident;
-- Java 21 and Minecraft 1.21.1 are explicit.
+- docs identify accepted vs proposed vs experiment-required decisions;
+- implementation uses the pinned CC:T 1.120.0 Maven coordinates (`common-api`, `forge-api`, runtime `forge`) rather than newer-source coordinates;
+- Java 21 and Minecraft 1.21.1 are explicit in build metadata;
+- CI run `34072958488` passed on both NeoForge `21.1.247` and `21.1.248`;
+- validated build-relevant commit: `562c1200624ce0889344a277b8375eb0a2e5be8b`;
+- both CI legs produced uploaded JAR artifacts;
+- **manual Minecraft launches used for MILESTONE-000: 0**.
 
-**Current state:** documentation portion in progress/complete; build scaffold not started.
+Manual runtime testing from this point follows `docs/TESTING.md`: automatic compile/CI checks remain frequent, while user-run Minecraft tests are accumulated into broader milestone-gate sessions unless an architecture-blocking runtime question requires an earlier probe.
 
 ---
 
