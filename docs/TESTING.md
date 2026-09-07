@@ -3,11 +3,13 @@
 **Status:** canonical test cadence policy  
 **Target stack:** Minecraft 1.21.1 / Java 21 / CC:Tweaked 1.120.0 / NeoForge 21.1.247–21.1.248  
 **Last reviewed:** 2026-09-07  
-**Search tags:** `TEST-CADENCE`, `MANUAL-TEST`, `CI-TEST`, `BATCHED-RUNTIME-TESTING`
+**Search tags:** `TEST-CADENCE`, `MANUAL-TEST`, `CI-TEST`, `BATCHED-RUNTIME-TESTING`, `MINIMUM-MANUAL-TESTING`
 
 ## Goal
 
 Keep manual runtime testing efficient. HighAudio should not ask for a new Minecraft test after every small code edit.
+
+**Manual Minecraft launches are the expensive last resort, not the default verification tool.** Source inspection, bytecode inspection, automated client/server startup, CI instrumentation, and combined diagnostic probes should answer as much as possible first.
 
 ## Default cadence
 
@@ -20,38 +22,57 @@ These do **not** consume a manual test cycle and should run whenever practical:
 - unit tests where they are cheap and deterministic;
 - static validation of resources/configuration;
 - source/bytecode/method-supplier inspection when it can answer the question without a user launch;
+- automated development-client startup under CI when the question is client initialization, Mixin application, sound-engine construction, or other machine-observable state;
 - dedicated-server startup smoke tests where CI can run them automatically.
 
-### Manual Minecraft/runtime checks — batch them
+### Manual Minecraft/runtime checks — minimum means minimum
 
-Manual tests should normally be accumulated into one focused test session after several related edits or at a milestone gate.
+Manual tests should normally be accumulated into **one focused session at the end of a meaningful experiment or milestone slice**, not one launch per uncertainty.
 
 Default rule:
 
-1. Make several related implementation changes.
-2. Keep automatic build/CI checks green while iterating.
-3. Accumulate runtime questions into one checklist.
-4. Ask for one manual test session that covers all of them together.
-5. Record the result in `PROTOTYPES.md` or the relevant milestone/ADR.
+1. Research the exact source/API behavior first.
+2. Implement all reasonable competing diagnostic modes in one build when practical.
+3. Keep the full automatic matrix green while iterating.
+4. Make the diagnostic self-measuring and self-logging so the user does not need to count, time, or inspect internal state manually.
+5. Ask for the smallest possible user action, ideally one command in one launch.
+6. Reuse the resulting logs to answer all currently relevant questions.
+7. Record the result only after it materially changes an architecture decision or closes a gate.
 
-Do **not** request a manual launch for documentation edits, refactors with no behavior change, formatting, or every tiny implementation patch.
+Do **not** request another manual launch merely to:
+
+- confirm a conclusion already established strongly enough for the current milestone;
+- test a later-milestone compatibility concern early;
+- repeat a count/refinement that the existing diagnostic can derive automatically;
+- verify documentation edits or behavior-neutral refactors;
+- check each candidate architecture in a separate build when they can coexist in one comparison probe;
+- obtain a subjective observation when objective instrumentation can answer the question.
 
 ## When an immediate manual test is justified
 
-Break the batching rule only when the next implementation decision depends on runtime evidence that cannot reasonably be obtained another way, for example:
+Break the batching rule only when **all** of the following are true:
+
+1. the result is architecture-blocking **now**;
+2. source/bytecode/CI/client-smoke evidence cannot answer it reliably;
+3. continuing without it would likely create substantial throwaway implementation;
+4. the build already combines every useful observation that can reasonably be collected in that launch.
+
+Examples include:
 
 - a speaker augmentation mechanism may register but not appear through the real Lua peripheral path;
-- a client sound hook may not fire;
-- an OpenAL lifecycle behavior is architecture-blocking;
-- continuing without the result would likely create throwaway work.
+- an audible/render-timing property cannot be established from headless/virtual audio;
+- an exact compatibility transform succeeds independently but may conflict only when both real mods are loaded;
+- an OpenAL device-specific behavior is directly blocking the current architecture choice.
 
-Even then, combine all currently useful observations into the same test build.
+A merely useful or reassuring manual check is **not** enough reason to interrupt development.
 
 ## Milestone gate policy
 
-A milestone may contain many code patches but should normally have **one consolidated manual gate session** unless a blocker forces an earlier probe.
+A milestone may contain many code patches but should normally have **one consolidated manual gate session**, with an additional session only if the first session exposes a genuinely architecture-blocking unknown.
 
-For example, `MILESTONE-001` should prefer one probe build that checks method visibility, native speaker regression, direct/wired attachment, lifecycle behavior, turtle/pocket visibility where practical, and both target NeoForge versions rather than separate user tests for each small edit.
+A later milestone's concern should not block the current milestone unless the current design would be reckless without resolving it. For example, broad SPR correctness belongs to its dedicated compatibility milestone; earlier work should rely on source/automatic coexistence evidence unless exact SPR runtime behavior becomes architecture-blocking.
+
+For synchronization experiments, prefer one self-running comparison command that exercises all candidate modes and supported source counts, measures skew/offsets itself, and emits a final machine-readable summary. The user should not need separate launches for high-level scheduling vs narrow Minecraft-owned OpenAL control.
 
 ## Result recording
 
@@ -60,6 +81,7 @@ Manual sessions should be given stable labels such as:
 ```text
 TEST-BATCH-001
 TEST-BATCH-002
+TEST-BATCH-003
 ```
 
 Each result should record:
@@ -71,8 +93,10 @@ Each result should record:
 - relevant logs;
 - what architecture decision the result changes.
 
+Do not create canonical documentation churn for every intermediate implementation attempt. Preserve significant evidence and final/superseded candidates; keep throwaway iteration history in Git commits/CI rather than repeatedly rewriting the architecture ledger.
+
 ## Rule for future development
 
-**Prefer fewer, broader, better-instrumented runtime tests over many narrow manual tests.**
+**Prefer the fewest possible, broadest useful, best-instrumented runtime tests.**
 
-The user provides the subjective/runtime verdict; CI, logs, instrumentation, and source analysis should carry as much technical verification as possible between those sessions.
+The user should ideally only install one already-green candidate, run one command, and send logs. CI, exact source research, automated clients, logs, instrumentation, and bytecode inspection should carry the technical burden between those sessions.
