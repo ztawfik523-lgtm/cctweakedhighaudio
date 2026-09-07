@@ -58,7 +58,7 @@ jobs:
       - name: Build against NeoForge ${{ matrix.neoforge }}
         run: ./gradlew --no-daemon -Pneo_version=${{ matrix.neoforge }} build
 
-      - name: Verify packaged MILESTONE-003 Part A2 candidate
+      - name: Verify packaged MILESTONE-003 timing candidate
         shell: bash
         run: |
           set -euo pipefail
@@ -100,11 +100,19 @@ jobs:
             exit 1
           fi
 
-          # Part A2 intentionally introduces exactly one HighAudio Minecraft-audio Mixin.
+          # M3 Minecraft-audio Mixins/accessors are client-only and deliberately narrow.
           grep -Fq 'cctweakedhighaudio.mixins.json' <<<"$jar_entries"
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/mixin/LibraryStreamingReservationMixin.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/mixin/ChannelSourceAccessor.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/mixin/SoundEngineExecutorAccessor.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/mixin/SoundEngineLibraryAccessor.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/mixin/LibraryDeviceAccessor.class' <<<"$jar_entries"
           mixin_json="$(unzip -p "$jar_path" cctweakedhighaudio.mixins.json)"
           grep -Fq 'LibraryStreamingReservationMixin' <<<"$mixin_json"
+          grep -Fq 'ChannelSourceAccessor' <<<"$mixin_json"
+          grep -Fq 'SoundEngineExecutorAccessor' <<<"$mixin_json"
+          grep -Fq 'SoundEngineLibraryAccessor' <<<"$mixin_json"
+          grep -Fq 'LibraryDeviceAccessor' <<<"$mixin_json"
 
           # Accepted MILESTONE-002 playback probe remains packaged as a regression fixture.
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp2/GeneratedPcmStream.class' <<<"$jar_entries"
@@ -114,15 +122,20 @@ jobs:
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp2/Exp2ClientModEvents.class' <<<"$jar_entries"
           grep -Fq 'assets/cctweakedhighaudio/sounds.json' <<<"$jar_entries"
 
-          # MILESTONE-003 capacity diagnostics remain packaged.
+          # MILESTONE-003 capacity and timing diagnostics remain packaged.
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/Exp3CapacityStream.class' <<<"$jar_entries"
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/Exp3CapacitySound.class' <<<"$jar_entries"
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/Exp3CapacityController.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/Exp3SyncStream.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/Exp3SyncController.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/Exp3ScheduledSound.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/Exp3ScheduledController.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/Exp3TimingPrimitives.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/Exp3TimedStartDiagnostics.class' <<<"$jar_entries"
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/Exp3ClientEvents.class' <<<"$jar_entries"
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/Exp3ClientModEvents.class' <<<"$jar_entries"
 
-          # The rebalance patch may reference Minecraft audio classes, but must not own raw
-          # source creation/deletion or grow into an independent OpenAL source manager.
+          # Reservation policy must not own raw OpenAL sources.
           javap -classpath "$jar_path" -p -c \
             dev.ztawfik.cctweakedhighaudio.client.audio.exp3.mixin.LibraryStreamingReservationMixin \
             > build/exp-003-rebalance-javap.txt
@@ -133,8 +146,27 @@ jobs:
           fi
           grep -Fq 'HIGHAUDIO_TARGET_STREAMING' build/exp-003-rebalance-javap.txt
 
+          # Timing layer may control existing Minecraft-owned sources, but must not create/destroy
+          # sources, devices, or contexts. It must contain both the core together primitive and the
+          # optional device-clock scheduled primitive, plus clock-aware diagnostic measurement.
+          javap -classpath "$jar_path" -p -c \
+            dev.ztawfik.cctweakedhighaudio.client.audio.exp3.Exp3TimingPrimitives \
+            dev.ztawfik.cctweakedhighaudio.client.audio.exp3.Exp3ScheduledController \
+            dev.ztawfik.cctweakedhighaudio.client.audio.exp3.Exp3ClientEvents \
+            > build/exp-003-timing-javap.txt
+          grep -Fq 'alSourcePlayv' build/exp-003-timing-javap.txt
+          grep -Fq 'alSourcePlayAtTimevSOFT' build/exp-003-timing-javap.txt
+          grep -Fq 'ALC_DEVICE_CLOCK_LATENCY_SOFT' build/exp-003-timing-javap.txt
+          grep -Fq 'AL_SAMPLE_OFFSET_CLOCK_SOFT' build/exp-003-timing-javap.txt
+          grep -Fq 'Exp3ScheduledController.run' build/exp-003-timing-javap.txt
+          if grep -Eq 'alGenSources|alDeleteSources|alcOpenDevice|alcCloseDevice|alcCreateContext|alcDestroyContext' build/exp-003-timing-javap.txt; then
+            echo "Unexpected OpenAL source/device/context ownership in timing layer"
+            cat build/exp-003-timing-javap.txt
+            exit 1
+          fi
+
           sha256sum "$jar_path" | tee build/exp-003-jar-sha256.txt
-          echo "Verified packaged MILESTONE-003 EXP-003 Part A2 candidate in $jar_path"
+          echo "Verified packaged MILESTONE-003 timing candidate in $jar_path"
 
       - name: Install virtual display dependencies
         shell: bash
@@ -142,7 +174,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq xvfb xauth
 
-      - name: EXP-003 Part A2 development-client audio-init smoke on NeoForge ${{ matrix.neoforge }}
+      - name: EXP-003 development-client audio-init and timed-capability smoke on NeoForge ${{ matrix.neoforge }}
         shell: bash
         env:
           ALSOFT_DRIVERS: "null"
@@ -168,13 +200,20 @@ jobs:
             exit 1
           fi
 
+          if ! grep -E '\[EXP-003\] timed-start capability .*sourceStartDelay=true.*sourceLatency=true.*deviceClock=true.*deviceLatencyNs=[0-9]+.*available=true' "$log" >/dev/null; then
+            echo "Timed-start/device-clock capability did not become available on the initialized Minecraft-owned device"
+            grep -F '[EXP-003] timed-start capability' "$log" || true
+            tail -n 400 "$log" || true
+            exit 1
+          fi
+
           if grep -Eq 'MixinApplyError|InvalidMixinException|InjectionError|Injection failed|static reservation shape changed|streaming reservation shape changed' "$log"; then
-            echo "Mixin/runtime reservation failure detected"
+            echo "Mixin/runtime audio initialization failure detected"
             grep -E 'MixinApplyError|InvalidMixinException|InjectionError|Injection failed|reservation shape changed' "$log" || true
             exit 1
           fi
 
-          echo "EXP-003 Part A2 client audio-init smoke reached rebalanced Minecraft-owned pools on NeoForge ${{ matrix.neoforge }} (runClient exit=$rc; timeout after marker is acceptable)"
+          echo "EXP-003 client audio-init/timed-capability smoke passed on NeoForge ${{ matrix.neoforge }} (runClient exit=$rc; timeout after markers is acceptable)"
 
       - name: Accepted EXP-001 development-server regression smoke on NeoForge ${{ matrix.neoforge }}
         shell: bash
@@ -339,11 +378,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cctweakedhighaudio-exp-003-rebalance-neoforge-${{ matrix.neoforge }}
+          name: cctweakedhighaudio-exp-003-timing-neoforge-${{ matrix.neoforge }}
           path: |
             build/libs/cctweakedhighaudio-*.jar
             build/exp-003-jar-sha256.txt
             build/exp-003-rebalance-javap.txt
+            build/exp-003-timing-javap.txt
             build/exp-003-client-init-*.log
             build/exp-003-dev-server-*.log
             build/exp-003-packaged-server-*.log
