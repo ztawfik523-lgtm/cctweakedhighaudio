@@ -2,7 +2,6 @@ package dev.ztawfik.cctweakedhighaudio.client.audio.exp3;
 
 import com.mojang.blaze3d.audio.Channel;
 import dev.ztawfik.cctweakedhighaudio.HighAudio;
-import dev.ztawfik.cctweakedhighaudio.client.audio.exp2.GeneratedPcmStream;
 import net.minecraft.client.Minecraft;
 import net.neoforged.neoforge.client.event.sound.PlayStreamingSourceEvent;
 import net.neoforged.neoforge.client.event.sound.SoundEngineLoadEvent;
@@ -65,7 +64,7 @@ public final class Exp3CapacityController {
         for (var i = 0; i < count; i++) {
             var angle = count == 1 ? 0.0 : (Math.PI * 2.0 * i / count);
             var position = origin.add(Math.cos(angle) * 1.25, 0.0, Math.sin(angle) * 1.25);
-            var sound = new Exp3CapacitySound(i, position, new GeneratedPcmStream());
+            var sound = new Exp3CapacitySound(i, position, new Exp3CapacityStream());
             sounds.add(sound);
             minecraft.getSoundManager().play(sound);
         }
