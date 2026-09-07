@@ -1,6 +1,6 @@
 # TEST-BATCH-003 — EXP-003 capacity and synchronization proof
 
-**Status:** PART A RE-AUDITED — strengthened code pending final exact CI freeze; manual runtime NOT RUN  
+**Status:** PART A READY — re-audited exact automatic candidate PASS; manual runtime NOT RUN  
 **Milestone:** MILESTONE-003  
 **Experiment:** EXP-003  
 **Branch:** `milestone-003-exp-003-capacity-sync`
@@ -20,9 +20,32 @@ JAR SHA-256:
 
 It compiled, packaged, and booted correctly on both target NeoForge versions, but the measurement procedure had avoidable weaknesses. It could stop a still-running previous probe immediately before starting the next count, allocated/generated a full 8-second PCM array per source, allowed only the four baseline counts, and mixed sound-thread event mutation with render-thread measurement state. It is therefore superseded **before any manual runtime evidence**.
 
+## Frozen strengthened Part A candidate
+
+```text
+code commit:      a500f3bee773e4e5558fe3473367927ece637f9b
+CI run:           34095196833
+NeoForge 21.1.247: PASS
+NeoForge 21.1.248: PASS
+JAR SHA-256 on both matrix legs:
+553919083f8d998fd7d3b0e143f8e76ad3da7b78862ee84c93d886110be41055
+```
+
+Automatic evidence on both exact target NeoForge versions passed:
+
+- Java 21 / Minecraft 1.21.1 / exact CC:T 1.120.0 compilation;
+- strengthened MILESTONE-003 Part A classes packaged, including `Exp3CapacityStream`;
+- accepted MILESTONE-002 playback classes/resource retained as regression fixtures;
+- accepted EXP-001 GenericSource regression checks;
+- development-server startup;
+- finished packaged-JAR clean dedicated-server startup;
+- no old HighAudio Mixin declaration/config/class reintroduced.
+
+The two matrix artifacts produced byte-identical HighAudio JARs with the SHA-256 above. Direct artifact inspection additionally confirmed the EXP-003 classes contain no raw LWJGL OpenAL/source-control symbols and no `Channel.stopped()` call.
+
 ## Part A — Minecraft-owned streaming capacity
 
-Use only the final strengthened candidate once its exact CI matrix is green. Keep Sound Physics Remastered absent for the initial baseline.
+Use only the frozen strengthened candidate above. Keep Sound Physics Remastered absent for the initial baseline.
 
 Baseline commands:
 
@@ -42,6 +65,7 @@ Each capacity run:
 - creates the requested number of ordinary Minecraft-owned positional streaming `SoundInstance`s;
 - keeps them close to the listener and at low non-zero volume so Minecraft can allocate real channels;
 - uses independent `AudioStream` cursor/close state while all instances share one immutable generated PCM backing array;
+- prewarms that shared PCM before the per-run heap baseline;
 - captures the existence of each real `Channel` only through `PlayStreamingSourceEvent`;
 - records requested/captured/active/closed-stream counts;
 - records `SoundManager.getDebugString()` so Minecraft's own source-pool view is preserved;
@@ -79,7 +103,7 @@ This experiment establishes a **conservative HighAudio streaming limit up to the
 
 ### Sequencing rule
 
-The strengthened probe refuses a new capacity run until the previous one has produced `capacity snapshot phase=final`. This prevents the next measurement from racing asynchronous sound-thread channel release.
+The strengthened probe refuses a new capacity run until the previous one has produced `capacity snapshot phase=final`. Finalization requires 10 consecutive client ticks with all probe sounds inactive, giving asynchronous sound-thread delivery/release a short grace window before another run is allowed.
 
 After each command, wait for the final snapshot before starting the next count. `/highaudio_exp3 status` reports `finalized=true` for a completed run.
 
