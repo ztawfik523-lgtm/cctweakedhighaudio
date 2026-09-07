@@ -25,10 +25,12 @@ public final class Exp2AudioController {
         if (player == null) return "EXP-002: no client player/world is active";
 
         stopExisting(false);
+        activeSound = null;
+        activeStream = null;
+        capturedChannel = null;
 
         activeStream = new GeneratedPcmStream();
         activeSound = new GeneratedPcmSound(player.position(), activeStream);
-        capturedChannel = null;
         lastOutcome = "play-requested";
 
         minecraft.getSoundManager().play(activeSound);
@@ -49,11 +51,18 @@ public final class Exp2AudioController {
 
     public static void onPlayStreaming(PlayStreamingSourceEvent event) {
         if (!(event.getSound() instanceof GeneratedPcmSound sound)) return;
+        if (sound != activeSound) {
+            HighAudio.LOGGER.info(
+                "[EXP-002] ignored stale PlayStreamingSourceEvent soundIdentity=0x{} activeIdentity={}",
+                Integer.toHexString(System.identityHashCode(sound)),
+                activeSound == null ? "none" : "0x" + Integer.toHexString(System.identityHashCode(activeSound))
+            );
+            return;
+        }
 
         streamingCaptures++;
         capturedChannel = event.getChannel();
-        if (activeSound == null) activeSound = sound;
-        if (activeStream == null) activeStream = sound.stream();
+        activeStream = sound.stream();
         lastOutcome = "channel-captured";
 
         HighAudio.LOGGER.info(
