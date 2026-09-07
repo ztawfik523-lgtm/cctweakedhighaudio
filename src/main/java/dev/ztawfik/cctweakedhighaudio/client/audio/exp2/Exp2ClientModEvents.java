@@ -7,7 +7,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.sound.SoundEngineLoadEvent;
 
 /** Mod-bus hook for SoundEngine construction/reload. */
-@EventBusSubscriber(modid = HighAudio.MOD_ID, value = Dist.CLIENT, bus = EventBusSubscriber.Bus.MOD)
+@EventBusSubscriber(modid = HighAudio.MOD_ID, value = Dist.CLIENT)
 public final class Exp2ClientModEvents {
     private Exp2ClientModEvents() {
     }
