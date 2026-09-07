@@ -17,14 +17,15 @@ public final class HighAudio {
     private final SpeakerGenericSource speakerSource = new SpeakerGenericSource();
 
     public HighAudio() {
-        LOGGER.info("CC:Tweaked HighAudio bootstrap loading MILESTONE-001 / EXP-001 GenericSource probe");
+        LOGGER.info("CC:Tweaked HighAudio bootstrap loading MILESTONE-002 / EXP-002 Minecraft-owned PCM probe");
 
+        // Keep the accepted MILESTONE-001 integration guarded while later milestones build on top of it.
         GenericSourceSelfCheck.verify(speakerSource);
         ComputerCraftAPI.registerGenericSource(speakerSource);
         NeoForge.EVENT_BUS.addListener(this::onServerStarted);
 
         LOGGER.info("[EXP-001] GenericSource registered id={}", speakerSource.id());
-        LOGGER.info("CC:Tweaked HighAudio bootstrap loaded MILESTONE-001 / EXP-001 GenericSource probe");
+        LOGGER.info("CC:Tweaked HighAudio bootstrap loaded MILESTONE-002 / EXP-002 Minecraft-owned PCM probe");
     }
 
     private void onServerStarted(ServerStartedEvent event) {
