@@ -1,11 +1,11 @@
 # TEST-BATCH-003 — EXP-003 capacity and synchronization proof
 
-**Status:** PART A BASELINE PASS — vanilla streaming cap measured at 8; PART A2 SPR-OFF REAL-CLIENT PASS — exact SPR coexistence/reload NEXT  
-**Milestone:** MILESTONE-003  
-**Experiment:** EXP-003  
-**Branch:** `milestone-003-exp-003-capacity-sync-rebalance`
+**Status:** PASS — GATE-003 CLOSED; vanilla streaming cap measured at 8; 16-stream Minecraft-owned rebalance and local synchronized group start proven  
+**Milestone:** MILESTONE-003 — COMPLETE  
+**Experiment:** EXP-003 — PASS for required renderer architecture  
+**Branch:** `milestone-003-exp-003-timing-modes`
 
-This milestone remains proof-first. Do not add production sessions, media upload, codecs, or a broad raw-OpenAL manager while source capacity and synchronization are still unresolved.
+This milestone remained proof-first. It did not add production sessions, media upload, codecs, or a broad raw-OpenAL manager. Capacity and local-start synchronization were resolved with Minecraft still owning source/channel/device lifecycle. Optional device-clock scheduled timing was automatically established as feasible but deliberately left for a later real session-timeline validation rather than forcing another synthetic M3 manual launch.
 
 ## Previous Part A candidate — superseded before manual test
 
@@ -84,25 +84,25 @@ Evidence: `docs/test-batches/evidence/TEST-BATCH-003-NEOFORGE-21.1.247.md`.
 
 Vanilla Minecraft-owned streaming is **insufficient for the project's 16-speaker stress target** without changing the allocation policy. The experiment succeeded because it located the actual runtime boundary cleanly.
 
-Do not respond to this result by immediately building an independent raw-OpenAL source manager.
+The next step was therefore a narrow re-evaluation of Minecraft's own reservation policy, not an independent raw-OpenAL source manager.
 
 ## Re-evaluation after Part A
 
-Source research and exact runtime evidence support a narrower candidate before the earlier A/B/C backend fork: **rebalance Minecraft's own static/streaming source reservation while keeping Minecraft ownership and the existing total source budget**.
+Source research and exact runtime evidence supported a narrower candidate before the earlier A/B/C backend fork: **rebalance Minecraft's own static/streaming source reservation while keeping Minecraft ownership and the existing total source budget**.
 
 Relevant verified/rechecked points:
 
 - Minecraft 1.21.1 `Library` owns distinct static and streaming channel counters/pools and selects between them on channel acquisition.
 - The observed runtime debug string reached `... + 8/8` exactly when allocation stopped.
-- Existing source-limit implementations for the 1.21 family modify the two Minecraft channel-pool sizes and expose the streaming reservation separately; this demonstrates feasibility of the mechanism, but HighAudio will not copy their broader total-source-limit behavior.
-- HighAudio already proved `SoundInstance + AudioStream + SoundManager` playback and lifecycle in EXP-002.
-- SPR 1.21.1 hooks Minecraft `Library`/`SoundEngine`/`Channel`, including `Channel.play()` and the Minecraft-owned source id. Keeping Minecraft-owned channels therefore preserves the integration surface SPR already expects better than independent raw OpenAL ownership would.
+- Existing source-limit implementations for the 1.21 family modify the two Minecraft channel-pool sizes and expose the streaming reservation separately; this demonstrated feasibility of the mechanism, but HighAudio did not copy their broader total-source-limit behavior.
+- HighAudio had already proved `SoundInstance + AudioStream + SoundManager` playback and lifecycle in EXP-002.
+- Keeping Minecraft-owned channels preserves the integration surface Minecraft/SPR already expects better than independent raw OpenAL ownership would.
 
 ### Important correction to earlier interpretation
 
 Do **not** assume `247 + 8` means a fixed 255-source hardware pool in every environment. Minecraft derives policy limits from the device-reported mono-source count and applies its own clamps. The observed runtime has `247` static slots plus `8` streaming slots, but the Part A2 prototype preserves the runtime's existing combined reservation rather than hard-coding a universal 239/16 split.
 
-## Part A2 — streaming reservation rebalance
+## Part A2 — streaming reservation rebalance — PASS
 
 ### Goal
 
@@ -247,93 +247,123 @@ Canonical evidence:
 
 `docs/test-batches/evidence/TEST-BATCH-003-PARTA2-NEOFORGE-21.1.247.md`
 
-### Part A2 SPR-off conclusion
+### Part A2 conclusion
 
-The tested real runtime now supports the project's **16 simultaneous HighAudio streaming-channel stress target** through Minecraft-owned channels while preserving the combined source reservation.
+The tested real runtime supports the project's **16 simultaneous HighAudio streaming-channel stress target** through Minecraft-owned channels while preserving the combined source reservation.
 
-This closes the SPR-off capacity side of Part A2. It does **not** yet prove exact SPR coexistence or reload reapplication on the real device, so ADR-0009 remains Proposed.
+`ADR-0009` is Accepted. Exact SPR 1.21.1-1.5.1 coexistence, acoustics, lifecycle/reload behavior, and performance are not M3 acceptance prerequisites and are deferred to MILESTONE-010. If that later exact evidence reveals a conflict, revisit the reservation policy then.
 
-### Exact SPR coexistence/reload acceptance evidence — NEXT
+## Part B — synchronization boundary — PASS
 
-Use exact SPR `1.21.1-1.5.1` with the same frozen HighAudio candidate.
-
-In one launch:
+A real-client self-running comparison measured two local start mechanisms for:
 
 ```text
-/highaudio_exp3 capacity 16
-wait for phase=final
-play/confirm at least one ordinary Minecraft sound
-F3+T
-wait for the reload to complete
-/highaudio_exp3 capacity 16
-wait for phase=final
+2, 4, 8, 16
 ```
 
-Required success evidence:
+The complete comparison was accidentally run twice, producing two full independent sweeps.
 
-- no Mixin application conflict;
-- the reservation rebalance applies with SPR present;
-- 16 Minecraft-owned streaming channels allocate before reload;
-- normal Minecraft static sound remains available;
-- F3+T rebuild/reload re-applies the reservation;
-- 16 channels allocate again after reload;
-- no HighAudio/SPR/OpenAL error;
-- HighAudio channels continue through Minecraft `Channel.play()`.
+### Compared mechanisms
 
-The SPR-on comparison is a capacity/coexistence proof, not the final MILESTONE-010 SPR correctness gate.
+**Ordinary Minecraft/high-level start**
 
-If this exact SPR coexistence/reload comparison passes, ADR-0009 may be accepted as the M3 capacity policy and EXP-003 can move to Part B synchronization measurement.
+- each already-ready stream starts through the normal Minecraft-owned path;
+- preserves the cleanest normal playback boundary and lowest latency.
 
-## Part B — synchronization boundary
+**Synchronized vector start**
 
-Part B remains unresolved. Do not choose a synchronization architecture until the exact SPR coexistence/reload comparison closes Part A2.
+- Minecraft still creates and owns every channel/source;
+- HighAudio captures the already-owned source IDs after `PlayStreamingSourceEvent`;
+- the diagnostic pauses/rewinds the prepared group and calls core OpenAL `alSourcePlayv(...)` once for the group on the sound thread;
+- no HighAudio source/device/context creation is involved.
 
-### Option A — pure Minecraft/high-level scheduling
+### Measured result
 
-Pros:
+Both mechanisms measured:
 
-- cleanest lifecycle and compatibility boundary;
-- no private OpenAL/source-id coupling.
+```text
+0 relative AL_SAMPLE_OFFSET spread
+```
 
-Cons:
+at the sampled start, t+2, t+5 and t+10 checkpoints through 16 sources in both full sweeps.
 
-- separate `SoundManager.play(...)` operations may have measurable first-sample skew;
-- may not expose precise enough renderer position for drift measurement.
+The vector path additionally showed:
 
-### Option B — narrow accessor/control of Minecraft-owned OpenAL sources
+- full 16/16 source capture;
+- no OpenAL vector error (`vectorError=0`);
+- zero measured pre-pause preparation offset in the diagnostic;
+- zero post-rewind offset;
+- clean stream closure.
 
-Pros:
+Canonical evidence:
 
-- Minecraft still owns allocation/lifecycle/category/spatial setup;
-- allows precise source-offset measurement and potentially atomic `alSourcePlayv` on already-owned sources.
+`docs/test-batches/evidence/TEST-BATCH-003-PARTB-NEOFORGE-21.1.247.md`
 
-Cons:
+### Part B conclusion
 
-- localized version-sensitive private/OpenAL coupling;
-- must prove prepare/arm does not leak audible samples or fight Minecraft/SPR state.
+Ordinary/high-level playback remains the correct default for an individual sound that should play as soon as it is ready. The already-ready synthetic comparison showed no measurable disadvantage in that scenario.
 
-### Option C — independent raw OpenAL ownership
+Future real media may become ready asynchronously because of cache/network/decode work. For an explicit local group that must wait for all members before starting, the proven `alSourcePlayv` primitive remains a narrow synchronized-start mechanism over Minecraft-owned sources.
 
-Pros:
+An independent raw OpenAL backend is not justified by the M3 evidence.
 
-- maximum source/queue/timing control.
+## Timing-intent follow-up — ADR-0010 Proposed
 
-Cons:
+M3's synchronization result is represented as semantic intent rather than a universal A/B/C backend selection:
 
-- duplicates Minecraft source allocation/lifecycle/category/reload/world cleanup responsibilities;
-- bypasses the normal Minecraft-owned `Channel.play()` integration surface SPR already hooks;
-- highest source-pool coexistence and compatibility risk.
+```text
+immediate  -> normal Minecraft-owned playback as soon as ready
+together   -> all-required-local-ready barrier, then synchronized start ASAP
+scheduled  -> optional media-zero alignment to a future HighAudio/session timeline point
+```
 
-This remains a fallback only if Minecraft-owned approaches fail experimentally.
+A one-member `together` group should normally reduce to immediate. A one-speaker scheduled request can still be meaningful if it needs to align to a session timeline.
 
-## GATE-003
+### Optional scheduled/device-clock automatic evidence
 
-Pass only when:
+The exact Minecraft 1.21.1 / LWJGL target exposes the required OpenAL Soft functionality. After Minecraft initializes its OpenAL device, both NeoForge 21.1.247 and 21.1.248 automatic development clients reported:
+
+```text
+sourceStartDelay=true
+sourceLatency=true
+deviceClock=true
+available=true
+```
+
+The strengthened timing layer uses:
+
+- `alSourcePlayAtTimevSOFT(...)` on Minecraft-owned sources;
+- `ALC_DEVICE_CLOCK_LATENCY_SOFT` to distinguish current device clock and output latency;
+- atomic `AL_SAMPLE_OFFSET_CLOCK_SOFT` source-offset/device-clock samples;
+- source-start/media-zero preroll compensation;
+- target-aware sequential-query compensation so a future-scheduled source is not falsely treated as advancing before its target.
+
+Latest strengthened scheduled code candidate:
+
+```text
+commit: ecb6c9d8a787184033f08082f888a0283b1d6ec5
+CI:     34121266402
+result: PASS on NeoForge 21.1.247 and 21.1.248
+```
+
+CI also audits that the timing layer does not call `alGenSources`, `alDeleteSources`, `alcOpenDevice`, `alcCloseDevice`, `alcCreateContext`, or `alcDestroyContext`.
+
+This automatic evidence proves capability and the narrow integration boundary. It does **not** claim end-to-end audible scheduled timing on the user's physical device. That optional behavior is deferred until the real production session clock/media pipeline exists, so a future manual test measures product semantics rather than a synthetic clock primitive.
+
+`ADR-0010` therefore remains Proposed and scheduled playback is not a GATE-003 prerequisite.
+
+Related detail: `docs/test-batches/TEST-BATCH-003-TIMING-MODES.md` and `docs/test-batches/evidence/TEST-BATCH-003-TIMING-C-AUTOMATIC.md`.
+
+## GATE-003 — PASSED
+
+GATE-003 passed because:
 
 - real vanilla source/channel capacity is preserved as measured evidence;
-- the 16-source product target is either met through a proven Minecraft-owned policy or reduced explicitly based on evidence;
-- one synchronization mechanism is selected from measured results rather than preference;
-- start skew is measured for the supported source counts;
-- required private/OpenAL access, if any, is precisely scoped;
-- preparation leak, pause/resume, and renderer-offset behavior are documented;
-- an alternative is documented if atomic vector start is not reliable through Minecraft ownership.
+- the 16-source project target is repeatedly met through a proven total-preserving Minecraft-owned reservation policy;
+- a synchronized local group-start mechanism is selected from measured real-client results and proven through 16 sources;
+- required private/OpenAL access is narrow, localized, and does not create a second source/device/context manager;
+- preparation offsets, vector errors, source-offset measurements, and cleanup are documented;
+- immediate and together behavior are separated by semantic intent rather than forcing synchronization latency on normal one-speaker playback;
+- optional scheduled/device-clock support is automatically feasible but correctly deferred from end-to-end acceptance until a real session timeline exists.
+
+Initial synchronized start does not prove long-running media drift. Production pause/resume/seek group transport, underrun detection, renderer-position tracking, timeline correction, and scheduled session semantics remain M5/M7 work.
