@@ -18,14 +18,14 @@ public final class Exp3TimedStartDiagnostics {
                 var capability = Exp3TimingPrimitives.inspect(event.getEngine());
                 lastCapability = capability;
                 HighAudio.LOGGER.info(
-                    "[EXP-003] timed-start capability sourceStartDelay={} sourceLatency={} deviceClock={} device=0x{} deviceClockNs={} available={} detail={} thread={}",
+                    "[EXP-003] timed-start capability sourceStartDelay={} sourceLatency={} deviceClock={} device=0x{} deviceClockNs={} deviceLatencyNs={} available={} detail={} thread={}",
                     capability.sourceStartDelay(), capability.sourceLatency(), capability.deviceClock(),
-                    Long.toHexString(capability.device()), capability.deviceClockNs(), capability.available(),
-                    capability.detail(), Thread.currentThread().getName()
+                    Long.toHexString(capability.device()), capability.deviceClockNs(), capability.deviceLatencyNs(),
+                    capability.available(), capability.detail(), Thread.currentThread().getName()
                 );
             });
         } catch (RuntimeException exception) {
-            lastCapability = new Exp3TimingPrimitives.Capability(false, false, false, 0L, -1L, false,
+            lastCapability = new Exp3TimingPrimitives.Capability(false, false, false, 0L, -1L, -1L, false,
                 exception.getClass().getSimpleName() + ":" + String.valueOf(exception.getMessage()));
             HighAudio.LOGGER.warn("[EXP-003] timed-start capability scheduling failed", exception);
         }
