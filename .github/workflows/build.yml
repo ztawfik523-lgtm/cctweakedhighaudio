@@ -58,7 +58,7 @@ jobs:
       - name: Build against NeoForge ${{ matrix.neoforge }}
         run: ./gradlew --no-daemon -Pneo_version=${{ matrix.neoforge }} build
 
-      - name: Verify packaged MILESTONE-003 candidate
+      - name: Verify packaged MILESTONE-003 Part A2 candidate
         shell: bash
         run: |
           set -euo pipefail
@@ -85,11 +85,8 @@ jobs:
           grep -Fq 'versionRange="[1.120.0]"' <<<"$metadata"
           grep -Fq 'versionRange="[1.21.1]"' <<<"$metadata"
           grep -Fq 'versionRange="[21.1.247,21.2)"' <<<"$metadata"
-
-          if grep -Fq '[[mixins]]' <<<"$metadata"; then
-            echo "Unexpected Mixin declaration found"
-            exit 1
-          fi
+          grep -Fq '[[mixins]]' <<<"$metadata"
+          grep -Fq 'config="cctweakedhighaudio.mixins.json"' <<<"$metadata"
 
           jar_entries="$(unzip -Z1 "$jar_path")"
 
@@ -102,10 +99,12 @@ jobs:
             echo "Unexpected old SpeakerPeripheralMixin.class found"
             exit 1
           fi
-          if grep -Fq 'cctweakedhighaudio.mixins.json' <<<"$jar_entries"; then
-            echo "Unexpected old HighAudio Mixin config found"
-            exit 1
-          fi
+
+          # Part A2 intentionally introduces exactly one HighAudio Minecraft-audio Mixin.
+          grep -Fq 'cctweakedhighaudio.mixins.json' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/mixin/LibraryStreamingReservationMixin.class' <<<"$jar_entries"
+          mixin_json="$(unzip -p "$jar_path" cctweakedhighaudio.mixins.json)"
+          grep -Fq 'LibraryStreamingReservationMixin' <<<"$mixin_json"
 
           # Accepted MILESTONE-002 playback probe remains packaged as a regression fixture.
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp2/GeneratedPcmStream.class' <<<"$jar_entries"
@@ -115,15 +114,67 @@ jobs:
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp2/Exp2ClientModEvents.class' <<<"$jar_entries"
           grep -Fq 'assets/cctweakedhighaudio/sounds.json' <<<"$jar_entries"
 
-          # MILESTONE-003 Part A capacity diagnostics must actually be packaged.
+          # MILESTONE-003 capacity diagnostics remain packaged.
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/Exp3CapacityStream.class' <<<"$jar_entries"
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/Exp3CapacitySound.class' <<<"$jar_entries"
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/Exp3CapacityController.class' <<<"$jar_entries"
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/Exp3ClientEvents.class' <<<"$jar_entries"
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/Exp3ClientModEvents.class' <<<"$jar_entries"
 
+          # The rebalance patch may reference Minecraft audio classes, but must not own raw
+          # source creation/deletion or grow into an independent OpenAL source manager.
+          javap -classpath "$jar_path" -p -c \
+            dev.ztawfik.cctweakedhighaudio.client.audio.exp3.mixin.LibraryStreamingReservationMixin \
+            > build/exp-003-rebalance-javap.txt
+          if grep -Eq 'alGenSources|alDeleteSources|org/lwjgl/openal/AL10|org\.lwjgl\.openal\.AL10' build/exp-003-rebalance-javap.txt; then
+            echo "Unexpected raw OpenAL source ownership in reservation Mixin"
+            cat build/exp-003-rebalance-javap.txt
+            exit 1
+          fi
+          grep -Fq 'HIGHAUDIO_TARGET_STREAMING' build/exp-003-rebalance-javap.txt
+
           sha256sum "$jar_path" | tee build/exp-003-jar-sha256.txt
-          echo "Verified packaged MILESTONE-003 EXP-003 candidate in $jar_path"
+          echo "Verified packaged MILESTONE-003 EXP-003 Part A2 candidate in $jar_path"
+
+      - name: Install virtual display dependencies
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb xauth
+
+      - name: EXP-003 Part A2 development-client audio-init smoke on NeoForge ${{ matrix.neoforge }}
+        shell: bash
+        env:
+          ALSOFT_DRIVERS: "null"
+        run: |
+          set -euo pipefail
+          log="build/exp-003-client-init-${{ matrix.neoforge }}.log"
+
+          set +e
+          timeout 180s xvfb-run -a ./gradlew --no-daemon -Pneo_version=${{ matrix.neoforge }} runClient >"$log" 2>&1
+          rc=$?
+          set -e
+
+          if ! grep -Fq '[EXP-003] streaming reservation rebalance' "$log"; then
+            echo "Reservation Mixin did not reach its runtime diagnostic; runClient exit=$rc"
+            tail -n 500 "$log" || true
+            exit 1
+          fi
+
+          if ! grep -Eq 'newStreaming=16 .*combinedPreserved=true|newStreaming=16.*combinedPreserved=true' "$log"; then
+            echo "Runtime reservation did not report newStreaming=16 with combined reservation preserved"
+            grep -F '[EXP-003] streaming reservation rebalance' "$log" || true
+            tail -n 300 "$log" || true
+            exit 1
+          fi
+
+          if grep -Eq 'MixinApplyError|InvalidMixinException|InjectionError|Injection failed|static reservation shape changed|streaming reservation shape changed' "$log"; then
+            echo "Mixin/runtime reservation failure detected"
+            grep -E 'MixinApplyError|InvalidMixinException|InjectionError|Injection failed|reservation shape changed' "$log" || true
+            exit 1
+          fi
+
+          echo "EXP-003 Part A2 client audio-init smoke reached rebalanced Minecraft-owned pools on NeoForge ${{ matrix.neoforge }} (runClient exit=$rc; timeout after marker is acceptable)"
 
       - name: Accepted EXP-001 development-server regression smoke on NeoForge ${{ matrix.neoforge }}
         shell: bash
@@ -288,10 +339,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cctweakedhighaudio-exp-003-neoforge-${{ matrix.neoforge }}
+          name: cctweakedhighaudio-exp-003-rebalance-neoforge-${{ matrix.neoforge }}
           path: |
             build/libs/cctweakedhighaudio-*.jar
             build/exp-003-jar-sha256.txt
+            build/exp-003-rebalance-javap.txt
+            build/exp-003-client-init-*.log
             build/exp-003-dev-server-*.log
             build/exp-003-packaged-server-*.log
             build/packaged-server-*/install.log
