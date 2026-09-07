@@ -108,14 +108,14 @@ jobs:
           sha256sum "$jar_path" | tee build/exp-001-jar-sha256.txt
           echo "Verified clean packaged EXP-001 GenericSource implementation in $jar_path"
 
-      - name: EXP-001 GenericSource dedicated-server smoke on NeoForge ${{ matrix.neoforge }}
+      - name: EXP-001 GenericSource development-server smoke on NeoForge ${{ matrix.neoforge }}
         shell: bash
         run: |
           set -euo pipefail
 
           mkdir -p run/server
           printf 'eula=true\n' > run/server/eula.txt
-          log="build/exp-001-server-${{ matrix.neoforge }}.log"
+          log="build/exp-001-dev-server-${{ matrix.neoforge }}.log"
 
           ./gradlew --no-daemon -Pneo_version=${{ matrix.neoforge }} runServer >"$log" 2>&1 &
           gradle_pid=$!
@@ -161,12 +161,111 @@ jobs:
           done
 
           if [[ "$self_check" -ne 1 || "$registered" -ne 1 || "$live_registry" -ne 1 || "$live_registry_fail" -ne 0 || "$server_ready" -ne 1 ]]; then
-            echo "EXP-001 GenericSource smoke failed: self_check=$self_check registered=$registered live_registry=$live_registry live_registry_fail=$live_registry_fail server_ready=$server_ready"
+            echo "EXP-001 development-server smoke failed: self_check=$self_check registered=$registered live_registry=$live_registry live_registry_fail=$live_registry_fail server_ready=$server_ready"
             tail -n 400 "$log" || true
             exit 1
           fi
 
-          echo "EXP-001 GenericSource live-registry smoke passed on NeoForge ${{ matrix.neoforge }}"
+          echo "EXP-001 GenericSource development-server live-registry smoke passed on NeoForge ${{ matrix.neoforge }}"
+
+      - name: EXP-001 packaged-JAR dedicated-server smoke on NeoForge ${{ matrix.neoforge }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          jar_path="$(find "$GITHUB_WORKSPACE/build/libs" -maxdepth 1 -type f -name 'cctweakedhighaudio-*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' -print -quit)"
+          if [[ -z "$jar_path" ]]; then
+            echo "No packaged HighAudio JAR found"
+            exit 1
+          fi
+
+          cct_dir="$HOME/.gradle/caches/modules-2/files-2.1/cc.tweaked/cc-tweaked-1.21.1-forge/1.120.0"
+          cct_jar="$(find "$cct_dir" -type f -name 'cc-tweaked-1.21.1-forge-1.120.0.jar' -print -quit 2>/dev/null || true)"
+          if [[ -z "$cct_jar" ]]; then
+            cct_jar="$(find "$cct_dir" -type f -name '*.jar' ! -name '*sources*' ! -name '*javadoc*' -print -quit 2>/dev/null || true)"
+          fi
+          if [[ -z "$cct_jar" ]]; then
+            echo "Could not locate exact CC:T 1.120.0 Forge runtime JAR in Gradle cache"
+            exit 1
+          fi
+
+          server_dir="$GITHUB_WORKSPACE/build/packaged-server-${{ matrix.neoforge }}"
+          installer="$server_dir/neoforge-installer.jar"
+          installer_sha="$server_dir/neoforge-installer.jar.sha256"
+          log="$GITHUB_WORKSPACE/build/exp-001-packaged-server-${{ matrix.neoforge }}.log"
+          mkdir -p "$server_dir"
+
+          base_url="https://maven.neoforged.net/releases/net/neoforged/neoforge/${{ matrix.neoforge }}"
+          curl --fail --location --retry 3 --retry-delay 2 "$base_url/neoforge-${{ matrix.neoforge }}-installer.jar" -o "$installer"
+          curl --fail --location --retry 3 --retry-delay 2 "$base_url/neoforge-${{ matrix.neoforge }}-installer.jar.sha256" -o "$installer_sha"
+          expected_sha="$(awk '{print $1}' "$installer_sha")"
+          actual_sha="$(sha256sum "$installer" | awk '{print $1}')"
+          if [[ -z "$expected_sha" || "$actual_sha" != "$expected_sha" ]]; then
+            echo "NeoForge installer SHA-256 verification failed"
+            exit 1
+          fi
+
+          (
+            cd "$server_dir"
+            java -jar "$installer" --installServer > install.log 2>&1
+            mkdir -p mods
+            cp "$jar_path" mods/
+            cp "$cct_jar" mods/
+            printf 'eula=true\n' > eula.txt
+          )
+
+          (
+            cd "$server_dir"
+            bash ./run.sh --nogui >"$log" 2>&1
+          ) &
+          server_pid=$!
+
+          cleanup_packaged() {
+            pkill -TERM -P "$server_pid" 2>/dev/null || true
+            kill "$server_pid" 2>/dev/null || true
+            wait "$server_pid" 2>/dev/null || true
+          }
+          trap cleanup_packaged EXIT
+
+          registered=0
+          live_registry=0
+          live_registry_fail=0
+          server_ready=0
+          for _ in $(seq 1 240); do
+            if grep -Fq '[EXP-001] GenericSource registered' "$log" 2>/dev/null; then
+              registered=1
+            fi
+            if grep -Fq '[EXP-001] live ServerContext self-check PASS' "$log" 2>/dev/null; then
+              live_registry=1
+            fi
+            if grep -Fq '[EXP-001] live ServerContext self-check FAIL' "$log" 2>/dev/null; then
+              live_registry_fail=1
+            fi
+            if grep -Fq 'Done (' "$log" 2>/dev/null; then
+              server_ready=1
+            fi
+            if [[ "$live_registry_fail" -eq 1 ]]; then
+              break
+            fi
+            if [[ "$registered" -eq 1 && "$live_registry" -eq 1 && "$server_ready" -eq 1 ]]; then
+              break
+            fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+
+          if [[ "$registered" -ne 1 || "$live_registry" -ne 1 || "$live_registry_fail" -ne 0 || "$server_ready" -ne 1 ]]; then
+            echo "EXP-001 packaged-server smoke failed: registered=$registered live_registry=$live_registry live_registry_fail=$live_registry_fail server_ready=$server_ready"
+            echo "--- installer log ---"
+            tail -n 200 "$server_dir/install.log" || true
+            echo "--- server log ---"
+            tail -n 400 "$log" || true
+            exit 1
+          fi
+
+          echo "EXP-001 packaged-JAR server smoke passed on NeoForge ${{ matrix.neoforge }}"
 
       - name: Upload JAR and EXP-001 diagnostics
         if: always()
@@ -176,5 +275,7 @@ jobs:
           path: |
             build/libs/cctweakedhighaudio-*.jar
             build/exp-001-jar-sha256.txt
-            build/exp-001-server-*.log
+            build/exp-001-dev-server-*.log
+            build/exp-001-packaged-server-*.log
+            build/packaged-server-*/install.log
           if-no-files-found: error
