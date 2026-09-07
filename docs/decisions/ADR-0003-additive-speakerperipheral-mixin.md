@@ -1,61 +1,40 @@
 # ADR-0003 — Add HighAudio methods with an additive SpeakerPeripheral Mixin
 
-**Status:** Proposed — requires `EXP-001`  
+**Status:** Superseded by `ADR-0008` before manual runtime gate  
 **Date:** 2026-09-07  
 **Search tags:** `ADR-0003`, `MIXIN`, `SpeakerPeripheral`, `LUA-METHODS`
 
 ## Context
 
-The exact CC:T 1.120.0 block speaker already exposes a concrete `SpeakerPeripheral`. Generic peripheral methods do not simply merge onto an existing specific `IPeripheral`. Replacing/wrapping the capability risks changing object identity, `equals`, attach/detach, method discovery, and wired-modem behavior.
+The exact CC:T 1.120.0 block speaker already exposes a concrete `SpeakerPeripheral`. The original leading proposal was a minimal additive Mixin which would add HighAudio Lua methods without replacing the existing peripheral object.
 
-CC:T runtime method discovery scans public methods on the runtime class for `@LuaFunction`, while Sponge Mixin supports merging new methods and method annotations into target classes.
+Automatic EXP-001 work showed this approach was technically viable: the Mixin could apply, the added method and annotation were present, native speaker methods remained present in reflective checks, and dedicated-server startup succeeded on NeoForge 21.1.247 and 21.1.248.
 
-## Proposed decision
+Before spending the consolidated manual Minecraft gate, the project re-evaluated CC:T 1.120.0's exact `GenericSource`/method-supplier path. A narrower alternative was found which can add methods to `SpeakerPeripheral` targets without transforming CC:T bytecode.
 
-Use a **minimal additive Mixin** targeting exact CC:T 1.120.0 `SpeakerPeripheral` to add the HighAudio Lua-facing methods. The Mixin should be a thin facade into HighAudio-owned integration/services, not contain the media engine.
+## Superseded decision
 
-Do not overwrite native `playAudio`, `playSound`, `playNote`, or stop behavior.
+Do **not** use the additive Mixin as the current MILESTONE-001 candidate.
 
-Because upgrade speakers derive from `SpeakerPeripheral`, emitter kind must be resolved explicitly; initial turtle/pocket support policy is a separate product choice.
+Keep it as the first fallback if the targeted GenericSource approach fails its real runtime gate or proves unsuitable later.
 
-## Why only Proposed
+## Why superseded instead of rejected
 
-Source-level evidence is strong, but the assembled runtime must prove:
+The Mixin did not fail its automatic proof. It was superseded because a less invasive candidate became available before the manual gate:
 
-- `@LuaFunction` survives transformation and is discovered;
-- direct and wired attachment remain stable;
-- native methods remain intact;
-- NeoForge 21.1.247 and 21.1.248 both load;
-- turtle/pocket exposure is understood.
+- no CC:T class transformation;
+- no Mixin application lifecycle;
+- still preserves the original `IPeripheral` object;
+- still keeps CC:T internal coupling localized.
 
-`EXP-001` is the acceptance gate.
+The replacement has its own tradeoffs: it still targets the non-public `SpeakerPeripheral` class at compile time, and CC:T's `disabled_generic_methods` configuration can disable registered generic methods.
 
-## Alternatives
+## Historical alternatives considered
 
-### GenericPeripheral
+- capability/provider wrapping: higher identity/invalidation/ordering risk;
+- full forwarding/replacement peripheral: reproduces more CC:T lifecycle behavior;
+- CC:T fork: too invasive unless smaller approaches fail.
 
-Rejected for this use because a specific existing `IPeripheral` blocks the simple generic-method extension path.
+## Replacement
 
-### Capability wrapper/priority provider
-
-Possible in principle but higher risk: delegation recursion, provider ordering, invalidation, equality, side queries, and conflicts with other wrappers must all be solved.
-
-### Full forwarding/replacement peripheral
-
-Can add arbitrary methods but reproduces/delegates more CC:T lifecycle behavior and risks changing peripheral equivalence.
-
-### Fork/replace CC:T speaker implementation
-
-Too invasive for the problem unless all smaller integration paths fail.
-
-## Consequences if accepted
-
-- small, obvious CC:T non-API compatibility surface;
-- normal speaker peripheral object/lifecycle remains CC:T-owned;
-- version pin/testing becomes mandatory;
-- future CC:T updates may require changing one Mixin target;
-- added methods may appear on speaker upgrades and require gating/support.
-
-## Acceptance rule
-
-Change status to `Accepted` only after `EXP-001` passes and its exact-version evidence is recorded. If it fails, mark this ADR `Rejected` or `Superseded`; do not edit the failure out of history.
+See `ADR-0008-targeted-speaker-genericsource.md` and `EXP-001`.
