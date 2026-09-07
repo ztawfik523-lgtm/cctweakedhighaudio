@@ -5,7 +5,7 @@ import dev.ztawfik.cctweakedhighaudio.client.audio.exp3.mixin.SoundEngineLibrary
 import net.minecraft.client.sounds.SoundEngine;
 import org.lwjgl.openal.AL;
 import org.lwjgl.openal.AL10;
-import org.lwjgl.openal.ALC;
+import org.lwjgl.openal.ALC10;
 import org.lwjgl.openal.SOFTDeviceClock;
 import org.lwjgl.openal.SOFTSourceStartDelay;
 
@@ -22,13 +22,16 @@ public final class Exp3TimingPrimitives {
     public static Capability inspect(SoundEngine engine) {
         try {
             var alCaps = AL.getCapabilities();
-            var alcCaps = ALC.getCapabilities();
             var library = ((SoundEngineLibraryAccessor) (Object) engine).highAudio$getLibrary();
             var device = ((LibraryDeviceAccessor) (Object) library).highAudio$getCurrentDevice();
 
             var sourceStartDelay = alCaps.AL_SOFT_source_start_delay;
             var sourceLatency = alCaps.AL_SOFT_source_latency;
-            var deviceClock = alcCaps.ALC_SOFT_device_clock;
+
+            // ALC extension availability is device-specific. Do not use ALC.getCapabilities() here:
+            // on Minecraft's sound thread it may resolve to LWJGL's process/router capabilities rather
+            // than the capabilities of Library.currentDevice. Query the actual Minecraft-owned device.
+            var deviceClock = device != 0L && ALC10.alcIsExtensionPresent(device, "ALC_SOFT_device_clock");
             var available = sourceStartDelay && sourceLatency && deviceClock && device != 0L;
             var clockNs = available
                 ? SOFTDeviceClock.alcGetInteger64vSOFT(device, SOFTDeviceClock.ALC_DEVICE_CLOCK_SOFT)
@@ -56,7 +59,8 @@ public final class Exp3TimingPrimitives {
 
     /**
      * Capability-gated scheduled group start at the current device clock plus {@code leadNanos}.
-     * The caller owns readiness policy; this method only rewinds and schedules existing Minecraft-owned sources.
+     * The caller owns readiness and media-onset/preroll policy; this method only rewinds and schedules
+     * existing Minecraft-owned sources.
      */
     public static StartResult startScheduled(SoundEngine engine, int[] sourceIds, long leadNanos) {
         if (sourceIds.length == 0) return new StartResult(false, AL10.AL_INVALID_VALUE, 0L, -1L, "empty-source-set");
