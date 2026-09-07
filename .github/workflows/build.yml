@@ -54,7 +54,7 @@ jobs:
       - name: Build against NeoForge ${{ matrix.neoforge }}
         run: ./gradlew --no-daemon -Pneo_version=${{ matrix.neoforge }} build
 
-      - name: Verify packaged mod metadata
+      - name: Verify packaged mod metadata and GenericSource comparison
         shell: bash
         run: |
           set -euo pipefail
@@ -84,12 +84,68 @@ jobs:
 
           jar_entries="$(unzip -Z1 "$jar_path")"
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/HighAudio.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/integration/cct/SpeakerGenericSource.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/integration/cct/GenericSourceSelfCheck.class' <<<"$jar_entries"
 
-          echo "Verified packaged metadata and HighAudio entrypoint in $jar_path"
+          sha256sum "$jar_path" | tee build/exp-001-generic-jar-sha256.txt
+          echo "Verified packaged GenericSource comparison in $jar_path"
 
-      - name: Upload JAR
+      - name: EXP-001 GenericSource dedicated-server smoke on NeoForge ${{ matrix.neoforge }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p run/server
+          printf 'eula=true\n' > run/server/eula.txt
+          log="build/exp-001-generic-server-${{ matrix.neoforge }}.log"
+
+          ./gradlew --no-daemon -Pneo_version=${{ matrix.neoforge }} runServer >"$log" 2>&1 &
+          gradle_pid=$!
+
+          cleanup() {
+            pkill -TERM -P "$gradle_pid" 2>/dev/null || true
+            kill "$gradle_pid" 2>/dev/null || true
+            wait "$gradle_pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          self_check=0
+          registered=0
+          server_ready=0
+          for _ in $(seq 1 180); do
+            if grep -Fq '[EXP-001-GENERIC] method-supplier self-check PASS' "$log"; then
+              self_check=1
+            fi
+            if grep -Fq '[EXP-001-GENERIC] GenericSource registered' "$log"; then
+              registered=1
+            fi
+            if grep -Fq 'Done (' "$log"; then
+              server_ready=1
+            fi
+            if [[ "$self_check" -eq 1 && "$registered" -eq 1 && "$server_ready" -eq 1 ]]; then
+              break
+            fi
+            if ! kill -0 "$gradle_pid" 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+
+          if [[ "$self_check" -ne 1 || "$registered" -ne 1 || "$server_ready" -ne 1 ]]; then
+            echo "EXP-001 GenericSource smoke failed: self_check=$self_check registered=$registered server_ready=$server_ready"
+            tail -n 400 "$log" || true
+            exit 1
+          fi
+
+          echo "EXP-001 GenericSource smoke passed on NeoForge ${{ matrix.neoforge }}"
+
+      - name: Upload JAR and comparison diagnostics
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cctweakedhighaudio-neoforge-${{ matrix.neoforge }}
-          path: build/libs/cctweakedhighaudio-*.jar
+          name: cctweakedhighaudio-generic-neoforge-${{ matrix.neoforge }}
+          path: |
+            build/libs/cctweakedhighaudio-*.jar
+            build/exp-001-generic-jar-sha256.txt
+            build/exp-001-generic-server-*.log
           if-no-files-found: error
