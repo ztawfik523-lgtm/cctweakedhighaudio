@@ -27,6 +27,7 @@ Statuses follow a small Nygard-style vocabulary:
 | [ADR-0007](ADR-0007-separate-content-and-session-protocol.md) | Accepted | Large content transfer and session/control state are separate protocol concerns. |
 | [ADR-0008](ADR-0008-targeted-speaker-genericsource.md) | Accepted | Add HighAudio Lua methods through a GenericSource targeted at exact CC:T 1.120.0 SpeakerPeripheral; EXP-001/GATE-001 passed. |
 | [ADR-0009](ADR-0009-rebalance-minecraft-streaming-reservation.md) | Proposed | Before abandoning Minecraft ownership, test rebalancing the existing Minecraft static/streaming reservation so 16 streaming slots can be available without raising the total source budget. |
+| [ADR-0010](ADR-0010-playback-timing-intents.md) | Proposed | Keep immediate playback as the fastest default, retain measured vector `together` start, and add capability-gated device-clock `scheduled` start as distinct script/session intents. |
 
 ## Decisions deliberately not made yet
 
@@ -36,10 +37,10 @@ Do not invent ADR status for these until evidence/product choice exists:
 - session behavior on block-speaker chunk unload;
 - final emitter identity persistence mechanism;
 - initial turtle/pocket support policy;
-- final synchronization arm/start/drift implementation;
+- exact public Lua method names/signatures for immediate/together/scheduled timing intents;
+- final long-running drift correction policy;
 - exact source/cache/content/upload limits;
 - MP3 decoder dependency;
-- synchronized-group Lua API shape;
 - server restart persistence;
 - final mod id/package/license;
 - HTTP/live streaming architecture.
