@@ -9,8 +9,8 @@ Severity and likelihood are preliminary until prototypes produce data.
 
 | ID | Risk | Severity | Likelihood | Primary mitigation |
 |---|---|---:|---:|---|
-| RISK-001 | Additive Mixin into CC:T internal `SpeakerPeripheral` fails or changes across target/runtime | High | Medium | EXP-001; isolate all CC:T internals; exact version pin |
-| RISK-002 | Added methods accidentally affect turtle/pocket speaker semantics | Medium | High | EXP-001; explicit emitter-kind gating/product choice |
+| RISK-001 | HighAudio targets CC:T internal `SpeakerPeripheral`; exact implementation may change | High | Medium | EXP-001; isolate all CC:T internals; exact version pin |
+| RISK-002 | Base `SpeakerPeripheral` target also exposes methods on turtle/pocket speakers | Medium | High | EXP-001; explicit emitter-kind gating/product choice |
 | RISK-003 | Minecraft-owned `AudioStream` lifecycle cannot provide enough control for pause/seek/sync | High | Medium | EXP-002/003; narrow accessor; hybrid only if proven necessary |
 | RISK-004 | Minecraft streaming/static channel pools cap HighAudio earlier than expected | High | Medium | EXP-003 capacity measurement; static/streaming policy; conservative limit |
 | RISK-005 | Tight group synchronization cannot be achieved without breaking Minecraft/SPR lifecycle | High | Medium | EXP-003; measure vector-start candidate; do not promise sync target early |
@@ -29,35 +29,40 @@ Severity and likelihood are preliminary until prototypes produce data.
 | RISK-018 | Native CC:T speaker behavior and HighAudio playback fight over one physical peripheral | Medium | Medium | define concurrency/stop semantics deliberately; regression tests |
 | RISK-019 | Session ownership between multiple attached computers is ambiguous | Medium | High | explicit cooperative/owner/session-token semantics before public API freeze |
 | RISK-020 | Documentation becomes stale and old research is mistaken for truth | High | Medium | stable IDs, ADR statuses, experiment ledger, update rules |
+| RISK-021 | CC:T `disabled_generic_methods` can disable HighAudio's GenericSource method | Medium | Low–Medium | document source id; detect/explain missing method; gate under default config |
 
 ---
 
-## RISK-001 — CC:T internal Mixin coupling
+## RISK-001 — CC:T internal SpeakerPeripheral coupling
 
 **Problem:** `SpeakerPeripheral` is outside `dan200.computercraft.api`. CC:T explicitly warns non-API classes may change.
 
-**Why acceptable for current target:** the project is intentionally pinned to CC:T 1.120.0 and wants to enhance the actual normal speaker rather than create a parallel block. A small, isolated Mixin may be less fragile than replacing peripheral identity/capabilities everywhere.
+The current `GenericSource` registration API itself is public, but the method target type is the exact internal `SpeakerPeripheral` class. HighAudio therefore still has deliberate version-sensitive implementation coupling even though it no longer transforms CC:T bytecode.
+
+**Why acceptable for current target:** the project is intentionally pinned to CC:T 1.120.0 and wants to enhance the actual normal speaker rather than create a parallel block. Targeting the real speaker class through CC:T's method supplier is less invasive than replacing peripheral identity/capabilities.
 
 **Mitigation:**
 
-- keep all target names/accessors in `integration/cct`;
-- run EXP-001 before production code;
-- fail clearly on unsupported CC:T versions;
-- never let core decoder/session/network code import `dan200.computercraft.shared.*`.
+- keep all `dan200.computercraft.shared.*` / `dan200.computercraft.core.*` imports inside `integration/cct`;
+- run EXP-001 before production media code;
+- exact-version CI/startup matrix;
+- fail clearly on unsupported/broken CC:T versions;
+- never let decoder/session/network/client code import CC:T internals;
+- keep the superseded additive Mixin as a documented fallback, not a hidden second path.
 
 ---
 
-## RISK-002 — base Mixin affects upgrade speakers
+## RISK-002 — base target affects upgrade speakers
 
-`UpgradeSpeakerPeripheral` derives from `SpeakerPeripheral`; turtle/pocket speaker implementations derive from it.
+`UpgradeSpeakerPeripheral` derives from `SpeakerPeripheral`; turtle/pocket speaker implementations derive from it. A GenericSource method targeted at the base type may therefore appear on them too.
 
-Possible policies:
+Possible product policies after exposure is observed:
 
 1. **Support all emitter types eventually:** clean architecture, more early work.
 2. **Expose methods but reject unsupported emitter kinds initially:** fastest block-speaker vertical slice, but API exists before feature support.
-3. **Use a more specific block-only integration:** narrow initial behavior, less reusable for moving emitters.
+3. **Move to a more specific block-only target/integration:** narrow initial behavior, less reusable for moving emitters.
 
-This is a meaningful product/implementation tradeoff. Do not silently choose it inside EXP-001.
+This is a meaningful product/implementation tradeoff. Do not silently choose it inside EXP-001; first observe exact runtime behavior.
 
 ---
 
@@ -216,3 +221,18 @@ A wired network may expose one speaker to several computers. Ownership choices i
 - explicit exclusive lock.
 
 Each has compatibility/usability tradeoffs. Defer final choice until the basic session model exists, then document it with an ADR.
+
+---
+
+## RISK-021 — GenericSource may be administratively disabled
+
+CC:T's `disabled_generic_methods` setting can disable a whole GenericSource id or an individual method. The current source id is intended to be `cctweakedhighaudio:speaker`.
+
+This is different from a runtime integration failure: an administrator may deliberately choose to suppress the method.
+
+**Mitigation:**
+
+- document the source id and method name;
+- run GATE-001 under normal/default configuration;
+- when diagnosing a missing `highAudioProbe`, distinguish configuration-disable from registration/method-discovery failure;
+- if ADR-0008 is accepted, make this behavior visible in user/admin documentation rather than attempting to bypass CC:T's control.
