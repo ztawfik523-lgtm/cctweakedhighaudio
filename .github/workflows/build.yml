@@ -58,7 +58,7 @@ jobs:
       - name: Build against NeoForge ${{ matrix.neoforge }}
         run: ./gradlew --no-daemon -Pneo_version=${{ matrix.neoforge }} build
 
-      - name: Verify packaged MILESTONE-003 timing candidate
+      - name: Verify packaged MILESTONE-004 finite-media candidate
         shell: bash
         run: |
           set -euo pipefail
@@ -122,6 +122,35 @@ jobs:
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp2/Exp2ClientModEvents.class' <<<"$jar_entries"
           grep -Fq 'assets/cctweakedhighaudio/sounds.json' <<<"$jar_entries"
 
+          # MILESTONE-004 finite-media product path is packaged without moving experiment fixtures.
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/media/ContentId.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/media/ContentStore.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/media/UploadManager.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/media/WavPcmDecoder.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/network/MediaPayloads.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/network/MediaNetworking.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/server/MediaServerRuntime.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/media/MediaClientController.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/media/MediaPcmStream.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/media/MediaSound.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/integration/cct/mixin/SpeakerPeripheralAccess.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/integration/cct/mixin/SpeakerPeripheralLifecycleMixin.class' <<<"$jar_entries"
+          grep -Fq 'cctweakedhighaudio.cct.mixins.json' <<<"$jar_entries"
+          cct_mixin_json="$(unzip -p "$jar_path" cctweakedhighaudio.cct.mixins.json)"
+          grep -Fq 'SpeakerPeripheralAccess' <<<"$cct_mixin_json"
+          grep -Fq 'SpeakerPeripheralLifecycleMixin' <<<"$cct_mixin_json"
+
+          javap -classpath "$jar_path" -p -c \
+            dev.ztawfik.cctweakedhighaudio.client.audio.media.MediaClientController \
+            dev.ztawfik.cctweakedhighaudio.client.audio.media.MediaPcmStream \
+            dev.ztawfik.cctweakedhighaudio.client.audio.media.MediaSound \
+            > build/m4-media-playback-javap.txt
+          if grep -Eq 'alGenSources|alDeleteSources|alcOpenDevice|alcCloseDevice|alcCreateContext|alcDestroyContext' build/m4-media-playback-javap.txt; then
+            echo "Unexpected OpenAL source/device/context ownership in M4 media playback"
+            cat build/m4-media-playback-javap.txt
+            exit 1
+          fi
+
           # MILESTONE-003 capacity and timing diagnostics remain packaged.
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/Exp3CapacityStream.class' <<<"$jar_entries"
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/Exp3CapacitySound.class' <<<"$jar_entries"
@@ -166,7 +195,7 @@ jobs:
           fi
 
           sha256sum "$jar_path" | tee build/exp-003-jar-sha256.txt
-          echo "Verified packaged MILESTONE-003 timing candidate in $jar_path"
+          echo "Verified packaged MILESTONE-004 finite-media candidate with retained M3 diagnostics in $jar_path"
 
       - name: Install virtual display dependencies
         shell: bash
@@ -215,7 +244,7 @@ jobs:
 
           echo "EXP-003 client audio-init/timed-capability smoke passed on NeoForge ${{ matrix.neoforge }} (runClient exit=$rc; timeout after markers is acceptable)"
 
-      - name: Accepted EXP-001 development-server regression smoke on NeoForge ${{ matrix.neoforge }}
+      - name: M4 plus accepted EXP-001 development-server smoke on NeoForge ${{ matrix.neoforge }}
         shell: bash
         run: |
           set -euo pipefail
@@ -238,6 +267,7 @@ jobs:
           registered=0
           live_registry=0
           live_registry_fail=0
+          m4_live=0
           server_ready=0
           for _ in $(seq 1 180); do
             if grep -Fq '[EXP-001] GenericSource method-supplier self-check PASS' "$log"; then
@@ -252,13 +282,16 @@ jobs:
             if grep -Fq '[EXP-001] live ServerContext self-check FAIL' "$log"; then
               live_registry_fail=1
             fi
+            if grep -Fq '[M4] live speaker methods PASS' "$log"; then
+              m4_live=1
+            fi
             if grep -Fq 'Done (' "$log"; then
               server_ready=1
             fi
             if [[ "$live_registry_fail" -eq 1 ]]; then
               break
             fi
-            if [[ "$self_check" -eq 1 && "$registered" -eq 1 && "$live_registry" -eq 1 && "$server_ready" -eq 1 ]]; then
+            if [[ "$self_check" -eq 1 && "$registered" -eq 1 && "$live_registry" -eq 1 && "$m4_live" -eq 1 && "$server_ready" -eq 1 ]]; then
               break
             fi
             if ! kill -0 "$gradle_pid" 2>/dev/null; then
@@ -267,15 +300,15 @@ jobs:
             sleep 1
           done
 
-          if [[ "$self_check" -ne 1 || "$registered" -ne 1 || "$live_registry" -ne 1 || "$live_registry_fail" -ne 0 || "$server_ready" -ne 1 ]]; then
-            echo "Development-server regression smoke failed: self_check=$self_check registered=$registered live_registry=$live_registry live_registry_fail=$live_registry_fail server_ready=$server_ready"
+          if [[ "$self_check" -ne 1 || "$registered" -ne 1 || "$live_registry" -ne 1 || "$live_registry_fail" -ne 0 || "$m4_live" -ne 1 || "$server_ready" -ne 1 ]]; then
+            echo "Development-server regression smoke failed: self_check=$self_check registered=$registered live_registry=$live_registry live_registry_fail=$live_registry_fail m4_live=$m4_live server_ready=$server_ready"
             tail -n 400 "$log" || true
             exit 1
           fi
 
-          echo "Accepted EXP-001 development-server regression smoke passed on NeoForge ${{ matrix.neoforge }}"
+          echo "M4 and accepted EXP-001 development-server smoke passed on NeoForge ${{ matrix.neoforge }}"
 
-      - name: MILESTONE-003 packaged-JAR dedicated-server smoke on NeoForge ${{ matrix.neoforge }}
+      - name: MILESTONE-004 packaged-JAR dedicated-server smoke on NeoForge ${{ matrix.neoforge }}
         shell: bash
         run: |
           set -euo pipefail
@@ -337,6 +370,7 @@ jobs:
           registered=0
           live_registry=0
           live_registry_fail=0
+          m4_live=0
           server_ready=0
           for _ in $(seq 1 240); do
             if grep -Fq '[EXP-001] GenericSource registered' "$log" 2>/dev/null; then
@@ -348,13 +382,16 @@ jobs:
             if grep -Fq '[EXP-001] live ServerContext self-check FAIL' "$log" 2>/dev/null; then
               live_registry_fail=1
             fi
+            if grep -Fq '[M4] live speaker methods PASS' "$log" 2>/dev/null; then
+              m4_live=1
+            fi
             if grep -Fq 'Done (' "$log" 2>/dev/null; then
               server_ready=1
             fi
             if [[ "$live_registry_fail" -eq 1 ]]; then
               break
             fi
-            if [[ "$registered" -eq 1 && "$live_registry" -eq 1 && "$server_ready" -eq 1 ]]; then
+            if [[ "$registered" -eq 1 && "$live_registry" -eq 1 && "$m4_live" -eq 1 && "$server_ready" -eq 1 ]]; then
               break
             fi
             if ! kill -0 "$server_pid" 2>/dev/null; then
@@ -363,8 +400,8 @@ jobs:
             sleep 1
           done
 
-          if [[ "$registered" -ne 1 || "$live_registry" -ne 1 || "$live_registry_fail" -ne 0 || "$server_ready" -ne 1 ]]; then
-            echo "Packaged-server smoke failed: registered=$registered live_registry=$live_registry live_registry_fail=$live_registry_fail server_ready=$server_ready"
+          if [[ "$registered" -ne 1 || "$live_registry" -ne 1 || "$live_registry_fail" -ne 0 || "$m4_live" -ne 1 || "$server_ready" -ne 1 ]]; then
+            echo "Packaged-server smoke failed: registered=$registered live_registry=$live_registry live_registry_fail=$live_registry_fail m4_live=$m4_live server_ready=$server_ready"
             echo "--- installer log ---"
             tail -n 200 "$server_dir/install.log" || true
             echo "--- server log ---"
@@ -372,18 +409,19 @@ jobs:
             exit 1
           fi
 
-          echo "MILESTONE-003 packaged-JAR server smoke passed on NeoForge ${{ matrix.neoforge }}"
+          echo "MILESTONE-004 packaged-JAR server smoke passed on NeoForge ${{ matrix.neoforge }}"
 
-      - name: Upload JAR and EXP-003 diagnostics
+      - name: Upload JAR and M4 plus retained EXP-003 diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cctweakedhighaudio-exp-003-timing-neoforge-${{ matrix.neoforge }}
+          name: cctweakedhighaudio-milestone-004-neoforge-${{ matrix.neoforge }}
           path: |
             build/libs/cctweakedhighaudio-*.jar
             build/exp-003-jar-sha256.txt
             build/exp-003-rebalance-javap.txt
             build/exp-003-timing-javap.txt
+            build/m4-media-playback-javap.txt
             build/exp-003-client-init-*.log
             build/exp-003-dev-server-*.log
             build/exp-003-packaged-server-*.log

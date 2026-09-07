@@ -74,6 +74,8 @@ A later milestone's concern should not block the current milestone unless the cu
 
 For synchronization experiments, prefer one self-running comparison command that exercises all candidate modes and supported source counts, measures skew/offsets itself, and emits a final machine-readable summary. The user should not need separate launches for high-level scheduling vs narrow Minecraft-owned OpenAL control.
 
+For MILESTONE-004, deterministic tests cover content hashing, upload/store/cache limits and cleanup, and WAV parsing. Automated client/server and packaged-JAR checks cover classloading, Mixins, payload registration, and retained M1–M3 regressions. Audible WAV output, positional perception, and authoritative stop are combined into the single [`test-batches/TEST-BATCH-004.md`](test-batches/TEST-BATCH-004.md) real-client gate.
+
 ## Result recording
 
 Manual sessions should be given stable labels such as:

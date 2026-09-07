@@ -24,7 +24,7 @@ Accepted/proposed decisions:
 - `ADR-0009`: **Accepted** conservative Minecraft streaming-reservation rebalance.
 - `ADR-0010`: **Proposed** playback timing intents (`immediate`, `together`, optional `scheduled`).
 
-Implementation boundary: the targeted CC:T integration, Minecraft-owned diagnostic playback/lifecycle path, capacity/timing diagnostics, and total-preserving reservation policy exist today. The content, upload, network, cache, decoder, session, audience, and production synchronization components below are planned unless a section explicitly says validated or Accepted. See [`CURRENT-STATE.md`](CURRENT-STATE.md) for the authoritative status summary.
+Implementation boundary: the targeted CC:T integration, Minecraft-owned diagnostic playback/lifecycle path, capacity/timing diagnostics, total-preserving reservation policy, and bounded M4 finite-WAV vertical slice exist today. Broader session lifecycle, audience recovery, long-media handling, and production synchronization remain planned unless a section explicitly says implemented, validated, or Accepted. See [`CURRENT-STATE.md`](CURRENT-STATE.md) for the authoritative status summary.
 
 ## 2. Target product system boundary
 
@@ -141,7 +141,7 @@ Pause-aware versus real-monotonic server clock remains a deliberate M5 product d
 
 Renderer clocks are separate from server/session time. OpenAL device clock values are local per client/device and must never be exposed as the global session clock.
 
-## 7. Identity model — Planned
+## 7. Identity model — M4 subset implemented
 
 Keep identities distinct:
 
@@ -153,7 +153,9 @@ Keep identities distinct:
 
 Do not use CC:T's native speaker source UUID as durable `EmitterId` without explicit persistence/lifecycle proof.
 
-## 8. Content model — Planned
+M4 implements `ContentId` exactly as specified and gives every play a random `SessionId`. It uses the native speaker source UUID only as a runtime-scoped source key; it does not claim that UUID is a durable product `EmitterId`.
+
+## 8. Content model — M4 finite subset implemented
 
 Finite media is content-addressed:
 
@@ -161,7 +163,7 @@ Finite media is content-addressed:
 ContentId = SHA-256(original file bytes)
 ```
 
-The server keeps a bounded content store. Clients keep bounded compressed and decoded caches/rings as later milestones require.
+The M4 server keeps original files in a 32 MiB in-memory access-ordered LRU store, deduplicated by `ContentId`. Each client keeps a 16 MiB compressed-content LRU. Active decoded PCM is separately limited to four playbacks and 8 MiB total. Long-media rings and shared decode remain later work.
 
 Desired scaling:
 
@@ -177,17 +179,17 @@ N lightweight positional render sources
 
 Do not always fully decode long media. Static-vs-streaming decisions must be budget-aware.
 
-## 9. Lua media ingestion — Planned
+## 9. Lua media ingestion — M4 low-level API implemented
 
 Java cannot assume a CC filesystem path is directly readable through `IComputerAccess`.
 
-Low-level direction:
+Implemented low-level flow:
 
 ```text
 begin upload -> bounded write chunks -> finish -> ContentId
 ```
 
-Any Lua argument bytes that must outlive the Lua call are copied into HighAudio-owned memory/storage during the call before asynchronous processing. Do not retain unsafe `IArguments`/Lua-table-backed state across threads/callbacks.
+The implemented methods are `highAudioUploadBegin(size)`, `highAudioUploadWrite(uploadId, bytes)`, `highAudioUploadFinish(uploadId)`, and `highAudioUploadAbort(uploadId)`. Uploads are limited to 2 MiB files, 16 KiB writes, two incomplete uploads per computer/speaker, 16 incomplete uploads server-wide, and 30 seconds without activity. Each write copies its read-only CC:T byte view immediately into HighAudio-owned memory; no `IArguments` or argument-backed buffer is retained.
 
 A bundled Lua helper can later provide:
 
@@ -197,7 +199,7 @@ highaudio.playFile(speaker, "/music/song.wav")
 
 by reading the CC filesystem itself and feeding the bounded low-level upload API.
 
-## 10. Network architecture — Planned
+## 10. Network architecture — M4 subset implemented; broader protocol planned
 
 Session/control traffic and large content transport remain separate.
 
@@ -222,9 +224,11 @@ Transport rules:
 - cancel stale transfers;
 - do not add per-chunk ACK round trips unless measurement justifies them.
 
-M4 should implement only the minimum bounded content-transfer subset needed for one finite-file vertical slice.
+M4 implements only `Play`, `Stop`, `ContentRequest`, `ContentBegin`, ordered `ContentChunk`, `ContentEnd`, and `ContentUnavailable`. A client requests bytes only on a cache miss. The server verifies that the requester is still in the authoritative session audience and sends each client/session at most once. Chunks are 32 KiB, far below the NeoForge clientbound payload ceiling. Client assembly is limited to four transfers and 8 MiB total, validates ordering/length/SHA-256, and cancels stale transfers on replacement/stop/logout/reload.
 
 ## 11. Audience and recovery — Planned
+
+M4 announces play/stop only to players in the same dimension within 64 blocks at command time. Late join, later range entry, dimension changes, and timeline reconstruction remain deliberately deferred to M5+.
 
 `AudienceManager` is distinct from vanilla chunk tracking. A client entering an active session's audience eventually receives authoritative state plus content if needed and reconstructs the correct play position once ready.
 
@@ -244,6 +248,8 @@ SoundEngineLoadEvent     -> renderer reconstruction/reload signal
 ```
 
 HighAudio does **not** own an independent OpenAL engine.
+
+The M4 production path now instantiates a positional, non-looping `SoundInstance` backed by finite decoded PCM through `AudioStream`. Authoritative replacement/stop calls Minecraft's `SoundManager.stop`; natural completion, logout, and sound-engine rebuild clear renderer-local stream/session state.
 
 Narrow low-level access is permitted only for timing/measurement over already Minecraft-owned sources when an explicit playback intent needs it.
 
@@ -312,7 +318,7 @@ conservative correction
 
 OpenAL source offsets/device clocks are observations, not global session authority.
 
-## 16. Decoder architecture — Planned
+## 16. Decoder architecture — M4 WAV subset implemented; broader codecs planned
 
 Codec-specific logic sits behind a common concept such as:
 
@@ -336,6 +342,8 @@ Implementation order:
 
 Physical positional speakers should render mono by default; stereo/multichannel input is downmixed for one positional emitter unless a future explicit routing design says otherwise.
 
+The M4 decoder strictly accepts RIFF/WAVE integer PCM format 1 with one channel, 8-bit unsigned or 16-bit signed little-endian samples, 8–48 kHz, consistent byte rate/block alignment, and a non-empty frame-aligned data chunk. Stereo is rejected rather than accidentally losing positional OpenAL behavior; future downmixing is not implemented yet.
+
 ## 17. Moving emitters — Planned
 
 Media/session state is separate from emitter transform:
@@ -353,7 +361,7 @@ Exact SPR 1.21.1-1.5.1 compatibility belongs to M10.
 
 Keeping Minecraft ownership is intended to maximize natural compatibility with SPR's Minecraft-channel interception model. Do not duplicate M10 manual testing during every earlier milestone. If exact M10 evidence shows an adapter is required, keep it narrow and lifecycle-aware.
 
-## 19. Threading ownership — Planned rules
+## 19. Threading ownership — M4 rules implemented; broader rules planned
 
 | Thread/domain | Responsibility |
 |---|---|
@@ -366,11 +374,12 @@ Keeping Minecraft ownership is intended to maximize natural compatibility with S
 
 Do not casually share mutable upload/session/render state across these domains. Define ownership/queues explicitly as M4+ implementation expands.
 
+In M4, upload validation/copy/hash/store operations run synchronously on the calling CC computer thread behind bounded synchronized owners. Play/stop and NeoForge payload handlers run on the Minecraft main thread. Client cache/assembly/decode coordination and `SoundManager` calls run on the client main thread; Minecraft continues to own its sound executor and channels.
+
 ## 20. Explicitly unresolved product decisions
 
 Do not infer these from implementation convenience:
 
-- exact M4 upload/content/cache limits;
 - server media clock pause semantics;
 - chunk-unload/block-replacement session behavior;
 - final public Lua names/session ergonomics;
@@ -384,6 +393,6 @@ Do not infer these from implementation convenience:
 
 ## 21. Next implementation milestone
 
-M0–M3 are complete. M4 has not started and is the first true finite-file vertical slice. It should add only enough upload/content/network/cache/WAV/session glue to make one normal placed speaker play one real file end-to-end while preserving the accepted architecture and bounded-resource rules.
+M0–M3 are complete. The M4 finite-file vertical slice is implemented and automatically validated; GATE-004 still requires its single audible real-client run. After that gate, M5 is the next implementation milestone for broader authoritative controls and lifecycle truth.
 
 Do not pull MP3, production synchronization groups, moving emitters, URL/live streaming, or broad SPR compatibility into that first slice.

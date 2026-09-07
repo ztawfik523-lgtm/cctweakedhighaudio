@@ -128,7 +128,7 @@ SPR may perform expensive acoustics work per source and owns/changes EFX state. 
 
 Large binary strings can create several temporary copies if API design is careless.
 
-**Mitigation:** upload sessions, bounded chunks, immediate copy once, hash/store incrementally, per-computer/per-server quotas, benchmark sizes rather than selecting one arbitrarily.
+**Mitigation:** M4 uses 2 MiB upload sessions, 16 KiB chunks copied immediately out of CC:T argument-backed storage, two incomplete uploads per computer/speaker, 16 server-wide, and 30-second expiry. Larger/streamed-media policy remains subject to later measurement rather than widening these limits casually.
 
 ---
 
@@ -136,7 +136,7 @@ Large binary strings can create several temporary copies if API design is carele
 
 At mono 48 kHz 16-bit, decoded PCM is about 96 kB/s before overhead. A one-hour track is hundreds of MB.
 
-**Mitigation:** never universally full-decode; ring/segment streaming for long content, shared compressed object, bounded decoded cache, refcount + eviction.
+**Mitigation:** M4 caps finite files at 2 MiB, the server content LRU at 32 MiB, each client compressed LRU at 16 MiB, incomplete client transfers at four/8 MiB, and active decoded PCM at four/8 MiB. Never universally full-decode longer content; ring/segment streaming remains later work.
 
 ---
 
@@ -152,7 +152,7 @@ Frame-oriented MP3 libraries may provide approximate seeks while HighAudio wants
 
 Minecraft networking is reliable, but generating queued chunks faster than one connection can send can consume server memory.
 
-**Mitigation:** bounded per-client pending bytes, transfer cancellation/replacement, no global decode/transfer lock, prefetch only for relevant audience.
+**Mitigation:** M4 transfers only on a client cache miss, sends at most once per client/session, uses 32 KiB chunks, caps client assembly at four/8 MiB, cancels replacement/stop/logout/reload state, and only serves a requester still within the 64-block authoritative audience. Later long-media delivery still needs measured backpressure.
 
 ---
 

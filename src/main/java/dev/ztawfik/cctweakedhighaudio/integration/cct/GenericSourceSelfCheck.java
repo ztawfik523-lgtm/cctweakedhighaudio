@@ -22,6 +22,14 @@ import java.util.Set;
  */
 public final class GenericSourceSelfCheck {
     private static final Set<String> REQUIRED_NATIVE_METHODS = Set.of("playNote", "playSound", "playAudio", "stop");
+    private static final Set<String> REQUIRED_M4_METHODS = Set.of(
+        "highAudioUploadBegin",
+        "highAudioUploadWrite",
+        "highAudioUploadFinish",
+        "highAudioUploadAbort",
+        "highAudioPlay",
+        "highAudioStop"
+    );
     private static final int SELF_CHECK_COMPUTER_ID = 9001;
     private static final String SELF_CHECK_ATTACHMENT = "exp001-selfcheck";
 
@@ -42,12 +50,18 @@ public final class GenericSourceSelfCheck {
         if (probe == null) {
             throw new IllegalStateException("[EXP-001] highAudioProbe was not generated for a SpeakerPeripheral subtype");
         }
+        var missingM4 = missingMethods(methods.keySet(), REQUIRED_M4_METHODS);
+        if (!missingM4.isEmpty()) {
+            throw new IllegalStateException("[M4] production methods were not generated for a SpeakerPeripheral subtype: " + missingM4);
+        }
         if (!missingNative.isEmpty()) {
             throw new IllegalStateException("[EXP-001] SpeakerPeripheral native methods missing from method supplier: " + missingNative);
         }
         if (supplier.getSelfMethods(new UnrelatedPeripheral()).containsKey("highAudioProbe")) {
             throw new IllegalStateException("[EXP-001] highAudioProbe leaked onto an unrelated IPeripheral");
         }
+        var leakedM4 = intersection(supplier.getSelfMethods(new UnrelatedPeripheral()).keySet(), REQUIRED_M4_METHODS);
+        if (!leakedM4.isEmpty()) throw new IllegalStateException("[M4] production methods leaked onto an unrelated peripheral: " + leakedM4);
 
         try {
             var result = probe.apply(target, fakeLuaContext(), fakeComputerAccess(), new ObjectArguments());
@@ -82,13 +96,16 @@ public final class GenericSourceSelfCheck {
         var methods = supplier.getSelfMethods(new ProbeSpeakerPeripheral());
         var probePresent = methods.containsKey("highAudioProbe");
         var missingNative = missingNativeMethods(methods.keySet());
-        var leakedToUnrelatedPeripheral = supplier.getSelfMethods(new UnrelatedPeripheral()).containsKey("highAudioProbe");
+        var missingM4 = missingMethods(methods.keySet(), REQUIRED_M4_METHODS);
+        var unrelatedMethods = supplier.getSelfMethods(new UnrelatedPeripheral()).keySet();
+        var leakedToUnrelatedPeripheral = unrelatedMethods.contains("highAudioProbe");
+        var leakedM4 = intersection(unrelatedMethods, REQUIRED_M4_METHODS);
 
-        if (!probePresent || !missingNative.isEmpty() || leakedToUnrelatedPeripheral) {
+        if (!probePresent || !missingNative.isEmpty() || !missingM4.isEmpty() || leakedToUnrelatedPeripheral || !leakedM4.isEmpty()) {
             HighAudio.LOGGER.error(
-                "[EXP-001] live ServerContext self-check FAIL sourceId={} probePresent={} missingNativeMethods={} leakedToUnrelatedPeripheral={}. " +
+                "[EXP-001] live ServerContext self-check FAIL sourceId={} probePresent={} missingNativeMethods={} missingM4Methods={} leakedToUnrelatedPeripheral={} leakedM4Methods={}. " +
                     "Check GenericSource registration timing, target matching, and CC:T disabled_generic_methods configuration.",
-                source.id(), probePresent, missingNative, leakedToUnrelatedPeripheral
+                source.id(), probePresent, missingNative, missingM4, leakedToUnrelatedPeripheral, leakedM4
             );
             return false;
         }
@@ -97,7 +114,20 @@ public final class GenericSourceSelfCheck {
             "[EXP-001] live ServerContext self-check PASS sourceId={} probePresent=true speakerOnly=true nativeMethodsPresent={}",
             source.id(), REQUIRED_NATIVE_METHODS
         );
+        HighAudio.LOGGER.info("[M4] live speaker methods PASS methods={}", REQUIRED_M4_METHODS);
         return true;
+    }
+
+    private static Set<String> missingMethods(Set<String> actual, Set<String> required) {
+        var missing = new java.util.HashSet<>(required);
+        missing.removeAll(actual);
+        return missing;
+    }
+
+    private static Set<String> intersection(Set<String> actual, Set<String> expected) {
+        var intersection = new java.util.HashSet<>(actual);
+        intersection.retainAll(expected);
+        return intersection;
     }
 
     private static Set<String> missingNativeMethods(Set<String> methodNames) {

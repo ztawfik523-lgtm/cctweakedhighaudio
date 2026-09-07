@@ -135,7 +135,7 @@ Synthetic pause/resume/seek group transport is deferred to M5/M7 where real auth
 
 ## MILESTONE-004 — first vertical slice: finite local media, one block speaker
 
-**Status:** NOT STARTED
+**Status:** IMPLEMENTED; AUTOMATED VALIDATION COMPLETE; AUDIBLE GATE-004 PENDING
 
 **Goal:** play one real finite file end-to-end through a normal placed CC:T speaker using the accepted M1–M3 architecture.
 
@@ -183,6 +183,21 @@ Intentionally not required yet:
 **GATE-004:** one real file can be uploaded by a CC program, content-addressed/stored, transferred in bounded chunks, decoded client-side, played positionally through a normal CC:T speaker, stopped authoritatively, and cleaned without bypassing the accepted Minecraft-owned renderer architecture.
 
 Manual validation should be one consolidated vertical-slice session only after source/CI/package/client/server checks are green.
+
+Implemented M4 slice:
+
+- six low-level methods on placed block speakers: bounded upload begin/write/finish/abort plus play/stop;
+- SHA-256 `ContentId`, a 32 MiB server LRU content store, and useful server/client deduplication;
+- request-on-cache-miss transfer in 32 KiB clientbound chunks, with one delivery per client/session;
+- a 16 MiB client compressed-content LRU, at most four/8 MiB incomplete client transfers, and at most four/8 MiB decoded active playbacks;
+- strict RIFF/WAVE integer PCM decode for positional mono, 8-bit unsigned or 16-bit signed little-endian, at 8–48 kHz;
+- positional `SoundInstance` + `AudioStream` playback through Minecraft's normal `SoundManager` path;
+- authoritative replacement/stop, server-stop cleanup, client reload/logout cleanup, computer-detach cleanup, and 30-second incomplete-upload expiry;
+- deterministic unit coverage plus development dedicated-server registration/Mixin smoke.
+
+Upload limits are 2 MiB per file, 16 KiB per Lua write, two incomplete uploads per computer/speaker, and 16 incomplete uploads server-wide. Server session state is capped at 256 sessions. Initial play announcements target players in the speaker's dimension within 64 blocks. Late-listener recovery and broader session lifecycle remain M5 work.
+
+The remaining audible gate is specified in [`test-batches/TEST-BATCH-004.md`](test-batches/TEST-BATCH-004.md). Until it passes, the implementation is not evidence that real output is audible.
 
 ---
 

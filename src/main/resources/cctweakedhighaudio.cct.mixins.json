@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.ztawfik.cctweakedhighaudio.integration.cct.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "SpeakerPeripheralAccess",
+    "SpeakerPeripheralLifecycleMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
