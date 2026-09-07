@@ -116,6 +116,7 @@ jobs:
           grep -Fq 'assets/cctweakedhighaudio/sounds.json' <<<"$jar_entries"
 
           # MILESTONE-003 Part A capacity diagnostics must actually be packaged.
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/Exp3CapacityStream.class' <<<"$jar_entries"
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/Exp3CapacitySound.class' <<<"$jar_entries"
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/Exp3CapacityController.class' <<<"$jar_entries"
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/Exp3ClientEvents.class' <<<"$jar_entries"
