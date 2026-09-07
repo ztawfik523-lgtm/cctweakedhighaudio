@@ -1,6 +1,6 @@
 # TEST-BATCH-003 — EXP-003 capacity and synchronization proof
 
-**Status:** PART A BASELINE PASS — vanilla streaming cap measured at 8; PART A2 REBALANCE PROTOTYPE NEXT  
+**Status:** PART A BASELINE PASS — vanilla streaming cap measured at 8; PART A2 AUTOMATIC PASS — manual 16-channel runtime NOT RUN  
 **Milestone:** MILESTONE-003  
 **Experiment:** EXP-003  
 **Branch:** `milestone-003-exp-003-capacity-sync-rebalance`
@@ -100,7 +100,7 @@ Relevant verified/rechecked points:
 
 ### Important correction to earlier interpretation
 
-Do **not** assume `247 + 8` means a fixed 255-source hardware pool in every environment. Minecraft derives policy limits from the device-reported mono-source count and applies its own clamps. The observed runtime has `247` static slots plus `8` streaming slots, but the Part A2 prototype must preserve the runtime's existing combined reservation rather than hard-code a universal 239/16 split.
+Do **not** assume `247 + 8` means a fixed 255-source hardware pool in every environment. Minecraft derives policy limits from the device-reported mono-source count and applies its own clamps. The observed runtime has `247` static slots plus `8` streaming slots, but the Part A2 prototype preserves the runtime's existing combined reservation rather than hard-coding a universal 239/16 split.
 
 ## Part A2 — streaming reservation rebalance
 
@@ -116,7 +116,7 @@ Test whether HighAudio can meet the 16-stream stress target by changing only Min
 
 ### Prototype rule
 
-The prototype may contain one narrow client-side Minecraft-audio Mixin/access patch localized under an EXP-003 package. It must **not**:
+The prototype contains one narrow client-side Minecraft-audio Mixin localized under the EXP-003 package. It must **not**:
 
 - raise the total source budget;
 - probe/generate additional raw OpenAL sources;
@@ -124,7 +124,7 @@ The prototype may contain one narrow client-side Minecraft-audio Mixin/access pa
 - alter CC:T speaker internals;
 - add codecs/media/session/network behavior.
 
-The intended policy is conceptually:
+The policy is conceptually:
 
 ```text
 original static + original streaming = preserved combined reservation
@@ -132,21 +132,46 @@ new streaming = min(16, combined reservation - safe static floor)
 new static    = combined reservation - new streaming
 ```
 
-On the measured runtime this is expected to transform `247 + 8` into `239 + 16`, but the implementation must derive the values from the runtime rather than assuming those constants globally.
+On the measured 255-channel runtime this transforms `247 + 8` into `239 + 16`, but the implementation derives the original reservation from the runtime rather than assuming those constants globally. It also fails loudly if the actual Minecraft constructor arguments do not match the exact vanilla 1.21.1 reservation shape it derived, rather than silently composing with an unknown transform.
 
-### Automatic gate before another manual launch
+### Frozen automatic Part A2 candidate — PASS
 
-The Part A2 candidate must prove in CI/code inspection that:
+```text
+code/CI commit:    fc4c63efc5377700d71a78683cd123dc60b7d635
+CI run:            34102697796
+NeoForge 21.1.247: PASS
+NeoForge 21.1.248: PASS
+JAR SHA-256 on both matrix legs:
+6a9e1eeb548b7f2b3b985f3357355510d5e8dfcbbb4319d1fbce6c11c0dabe96
+```
 
-- only the intended Minecraft audio initialization boundary is transformed;
-- the Mixin applies against NeoForge 21.1.247 and 21.1.248 development runtime;
-- packaged-JAR dedicated-server startup remains clean/client-only;
-- M1 GenericSource regression checks remain intact;
-- M2/M3 playback classes remain packaged;
-- no raw `alGenSources`/`alDeleteSources` ownership is introduced;
-- diagnostic logging records original and rebalanced static/streaming limits on every sound-engine load/reload.
+Both matrix artifacts are byte-identical. The exact development-client sound-engine initialization smoke passed on both target NeoForge builds and logged:
 
-### Manual Part A2 acceptance evidence
+```text
+reportedChannelCount=255
+originalStatic=247
+originalStreaming=8
+newStatic=239
+newStreaming=16
+combinedPreserved=true
+targetStreaming=16
+```
+
+The CI audio device is OpenAL Soft `No Output`; this proves the exact client Mixin/application/calculation boundary, not audible 16-channel playback on the user's hardware.
+
+Additional automatic checks passed:
+
+- exact Java/MC/CC:T/NeoForge build matrix;
+- packaged Mixin config and only the intended `LibraryStreamingReservationMixin`;
+- old `SpeakerPeripheralMixin` remains absent;
+- M1 GenericSource regression classes and real development-server self-check remain intact;
+- M2 and M3 playback/capacity classes/resources remain packaged;
+- direct bytecode/symbol inspection found no HighAudio `alGenSources`, `alDeleteSources`, AL10 raw-source ownership, or independent source manager in the reservation patch;
+- packaged-JAR dedicated-server startup passed on `.247` and `.248`, confirming the client-only transform does not break server loading.
+
+The only client `ERROR` in the CI smoke is the headless Linux narrator failing to load `flite`; it is unrelated to HighAudio/Mixin/OpenAL allocation. OpenAL itself initialized successfully on the CI `No Output` device and the sound engine started after the rebalance diagnostic.
+
+### Manual Part A2 acceptance evidence — NOT RUN
 
 With SPR absent first:
 
@@ -160,13 +185,14 @@ wait for final
 Expected success evidence:
 
 ```text
-rebalance originalStatic=... originalStreaming=8
-rebalance newStatic=... newStreaming=16
+streaming reservation rebalance ... originalStreaming=8 ... newStreaming=16 ... combinedPreserved=true
 capacity requested=16
 captures=16
 activeSounds=16
 soundDebug=... + 16/16
 ```
+
+The user does not need to refine intermediate counts unless 16 fails: the vanilla threshold is already known precisely from Part A.
 
 Then perform one short SPR-on repeat only after the clean baseline proves 16 allocation. Required SPR-on checks:
 
