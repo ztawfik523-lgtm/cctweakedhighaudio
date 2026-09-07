@@ -15,6 +15,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 public final class Exp3CapacityController {
     private static final int MIN_COUNT = 1;
     private static final int MAX_COUNT = 16;
+    private static final int FINAL_INACTIVE_TICKS = 10;
 
     /** Sound-thread -> render-thread event handoff. No OpenAL/channel methods are invoked outside the event callback. */
     private static final ConcurrentLinkedQueue<ChannelCapture> pendingCaptures = new ConcurrentLinkedQueue<>();
@@ -28,6 +29,7 @@ public final class Exp3CapacityController {
     private static int requestedCount;
     private static int captures;
     private static int ticksSinceRequest;
+    private static int consecutiveInactiveTicks;
     private static int engineGeneration;
     private static long baselineUsedHeap;
     private static boolean summary5;
@@ -52,16 +54,21 @@ public final class Exp3CapacityController {
 
         // Keep each measurement isolated. Sound/channel release crosses the sound thread, so do not silently stop
         // a previous run and immediately consume the same streaming pool for the next one. A new run becomes legal
-        // only after tick() has observed the previous one fully inactive and logged its final snapshot.
+        // only after tick() has observed a short consecutive-inactive grace window and logged the final snapshot.
         if (!sounds.isEmpty() && !finalLogged) {
             return "EXP-003: previous capacity probe has not finalized yet; wait for phase=final (or stop it and wait) before starting another count";
         }
         if (!sounds.isEmpty()) clearStateOnly();
 
+        // Load/generate the single shared PCM backing array before recording the per-run heap baseline. This avoids
+        // charging only the first (1-source) run for one-time shared PCM initialization.
+        var sharedPcmBytes = Exp3CapacityStream.warmUpSharedPcm();
+
         activeRunToken = ++nextRunToken;
         requestedCount = count;
         captures = 0;
         ticksSinceRequest = 0;
+        consecutiveInactiveTicks = 0;
         summary5 = false;
         summary20 = false;
         summary40 = false;
@@ -79,9 +86,9 @@ public final class Exp3CapacityController {
         }
 
         HighAudio.LOGGER.info(
-            "[EXP-003] capacity requested={} runToken={} position=({}, {}, {}) engineGeneration={} soundDebug={} usedHeapBytes={}",
+            "[EXP-003] capacity requested={} runToken={} position=({}, {}, {}) engineGeneration={} sharedPcmBytes={} soundDebug={} usedHeapBytes={}",
             count, activeRunToken, player.getX(), player.getY(), player.getZ(), engineGeneration,
-            safeDebugString(), baselineUsedHeap
+            sharedPcmBytes, safeDebugString(), baselineUsedHeap
         );
 
         return "EXP-003 capacity probe requested " + count + " Minecraft-owned streams";
@@ -148,9 +155,15 @@ public final class Exp3CapacityController {
         }
 
         var active = activeSoundCount();
-        if (active == 0 && ticksSinceRequest >= 5) {
-            // Drain once more before freezing the result in case the final event arrived between the first drain and
-            // SoundManager's inactive observation on this tick.
+        if (active == 0) {
+            consecutiveInactiveTicks++;
+        } else {
+            consecutiveInactiveTicks = 0;
+        }
+
+        if (ticksSinceRequest >= 5 && consecutiveInactiveTicks >= FINAL_INACTIVE_TICKS) {
+            // Drain once more before freezing the result. The consecutive-inactive window gives the sound thread time
+            // to deliver any final capture/release work and prevents the next capacity run from racing that cleanup.
             drainCaptures();
             finalLogged = true;
             logSnapshot("final");
@@ -164,6 +177,7 @@ public final class Exp3CapacityController {
             + ", captures=" + captures
             + ", active=" + activeSoundCount()
             + ", closedStreams=" + closedStreamCount()
+            + ", inactiveTicks=" + consecutiveInactiveTicks + "/" + FINAL_INACTIVE_TICKS
             + ", finalized=" + finalLogged
             + ", engineGeneration=" + engineGeneration
             + ", last=" + lastOutcome
@@ -196,9 +210,9 @@ public final class Exp3CapacityController {
     private static void logSnapshot(String phase) {
         var used = usedHeap();
         HighAudio.LOGGER.info(
-            "[EXP-003] capacity snapshot phase={} runToken={} requested={} captures={} activeSounds={} closedStreams={} heapDeltaBytes={} soundDebug={}",
+            "[EXP-003] capacity snapshot phase={} runToken={} requested={} captures={} activeSounds={} closedStreams={} inactiveTicks={} heapDeltaBytes={} soundDebug={}",
             phase, activeRunToken, requestedCount, captures, activeSoundCount(), closedStreamCount(),
-            used - baselineUsedHeap, safeDebugString()
+            consecutiveInactiveTicks, used - baselineUsedHeap, safeDebugString()
         );
     }
 
@@ -235,6 +249,7 @@ public final class Exp3CapacityController {
         requestedCount = 0;
         captures = 0;
         ticksSinceRequest = 0;
+        consecutiveInactiveTicks = 0;
         summary5 = false;
         summary20 = false;
         summary40 = false;
