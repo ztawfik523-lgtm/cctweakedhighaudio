@@ -1,6 +1,6 @@
 # ADR-0004 — Let Minecraft own the client audio source/channel
 
-**Status:** Proposed — requires `EXP-002` and `EXP-003`  
+**Status:** Proposed — `EXP-002` PASS; requires `EXP-003` before acceptance  
 **Date:** 2026-09-07  
 **Search tags:** `ADR-0004`, `SoundInstance`, `AudioStream`, `Channel`, `OpenAL`, `SPR`
 
@@ -30,16 +30,44 @@ Add only the smallest accessor/interception needed for precision synchronization
 
 Do not build an independent parallel OpenAL source manager by default.
 
-## Why only Proposed
+## EXP-002 result — PASS
 
-Source-level evidence proves the basic playback pattern, not all HighAudio requirements. Runtime prototypes still need to prove:
+MILESTONE-002 / EXP-002 validated the basic Minecraft-owned playback/lifecycle half of this ADR on the frozen candidate:
 
-- exact 21.1.247/248 sound-event availability/behavior;
-- reliable Channel association;
-- cleanup and reconstruction through F3+T/device/world lifecycle;
+```text
+commit: 4e31bbd08cc8c4e314637d857098c02232f41ff4
+CI run: 34088822441
+JAR SHA-256:
+515ced7cb14d0ac94131388997c23547cd907a0348a2777a90abf5467d312913
+```
+
+Automatic compilation/package/dedicated-server evidence passed on NeoForge 21.1.247 and 21.1.248. Real NeoForge 21.1.247 client evidence established:
+
+- arbitrary generated 48 kHz / 16-bit / mono PCM is audible through Minecraft's sound path;
+- positional attenuation and Minecraft Records/Jukebox + master volume controls behave normally;
+- `PlayStreamingSourceEvent` exposes the real Minecraft-owned `Channel` for active HighAudio playback;
+- explicit stop and natural completion cleanly stop the channel and close the stream;
+- F3+T reinitializes OpenAL, fires `SoundEngineLoadEvent`, and later playback can create a fresh channel;
+- disconnect/world leave cleans up active playback and it does not resurrect on rejoin;
+- no independent raw OpenAL source manager was required.
+
+EXP-002 also proved two cautions for EXP-003:
+
+- `AudioStream` bytes consumed/queued is not audible renderer position;
+- Java `SoundEngine` object identity is not a renderer-generation identifier across reloads.
+
+A muted sound may also be rejected before channel allocation, so future arming logic cannot assume ordinary category/master mute will still create a source.
+
+## Why still Proposed
+
+EXP-002 proved lifecycle/Channel capture but not all HighAudio requirements. `EXP-003` still needs to prove or replace:
+
 - actual static/streaming pool capacity;
-- whether a Minecraft-owned Channel can be safely prepared/paused/reset and then tightly group-started;
-- whether SPR naturally sees/processes these sources.
+- whether a Minecraft-owned Channel can be safely prepared/paused/reset and tightly group-started;
+- renderer/source offset reliability and timing extensions;
+- whether precise synchronization can remain pure high-level Minecraft or needs one narrow source-id/private accessor;
+- whether atomic vector start is reliable enough if used;
+- SPR behavior under multi-source load remains later compatibility evidence.
 
 ## Alternatives considered
 
@@ -57,7 +85,7 @@ Rejected as the default because those lifecycle costs are substantial. Keep as a
 
 **Costs:** may not provide enough control/measurement for tight group start, sample offset, or queued-stream correction.
 
-Not rejected, but must be tested. If it proves sufficient, prefer it over adding accessors.
+Not rejected. `EXP-003` should measure it first where practical. If it is sufficient, prefer it over adding accessors.
 
 ## Consequences if accepted
 
@@ -76,4 +104,4 @@ Negative:
 
 ## Acceptance rule
 
-Accept only after `EXP-002` proves lifecycle/Channel capture and `EXP-003` proves or replaces the synchronization/capacity assumptions. If the experiments show a hybrid is required, supersede this ADR with the exact boundary rather than silently expanding raw OpenAL ownership.
+Accept only after `EXP-002` proves lifecycle/Channel capture **and** `EXP-003` proves or replaces the synchronization/capacity assumptions. If the experiments show a hybrid is required, supersede this ADR with the exact boundary rather than silently expanding raw OpenAL ownership.
