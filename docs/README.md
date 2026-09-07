@@ -18,6 +18,7 @@ The authoritative information is intentionally split by **kind of knowledge**:
 | Why did we make an important choice? | [`decisions/`](decisions/) |
 | What has not been proven and needs code/runtime evidence? | [`PROTOTYPES.md`](PROTOTYPES.md) |
 | What do we build next and what gate must pass? | [`ROADMAP.md`](ROADMAP.md) |
+| How often should manual Minecraft tests be requested? | [`TESTING.md`](TESTING.md) |
 | What can still hurt the project? | [`RISKS.md`](RISKS.md) |
 | Where did a claim/library/license come from? | [`SOURCES.md`](SOURCES.md) |
 | What does a term mean? | [`GLOSSARY.md`](GLOSSARY.md) |
@@ -49,6 +50,7 @@ Use these exact prefixes in code reviews, commits, issues, and docs:
 - `EXP-*` — runtime/build experiments.
 - `RISK-*` — architecture/performance/compatibility risks.
 - `MILESTONE-*` — roadmap stages.
+- `TEST-BATCH-*` — consolidated manual runtime sessions.
 
 Status vocabulary:
 
@@ -129,6 +131,10 @@ Every `EXP-*` must include:
 - result section, initially `NOT RUN`.
 
 Do not turn a prototype into production code by accident. If it passes, extract the validated mechanism into the real architecture in the next milestone.
+
+## Manual testing cadence
+
+Follow [`TESTING.md`](TESTING.md): keep automatic compile/CI checks frequent, but batch user-run Minecraft tests into broad, instrumented milestone-gate sessions whenever possible. Do not request a new manual launch for every small patch.
 
 ## Documentation update rule
 
