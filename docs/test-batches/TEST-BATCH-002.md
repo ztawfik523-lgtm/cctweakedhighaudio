@@ -1,11 +1,32 @@
 # TEST-BATCH-002 — EXP-002 Minecraft-owned PCM playback gate
 
-**Status:** NOT RUN — automatic build evidence first  
+**Status:** READY FOR MANUAL GATE — strengthened automatic evidence PASS  
 **Milestone:** MILESTONE-002  
 **Experiment:** EXP-002  
 **Branch:** `milestone-002-exp-002-minecraft-audio`
 
-This batch is intentionally client-focused. Do not repeat Minecraft launches after small code changes; wait for a green exact-version build and then cover playback, channel capture, attenuation, stop, and sound-engine reload in one session.
+This batch is intentionally client-focused. Do not repeat Minecraft launches after small code changes; use the frozen candidate below and cover playback, channel capture, attenuation, stop, and sound-engine reload in one session.
+
+## Frozen candidate
+
+```text
+commit: 4e31bbd08cc8c4e314637d857098c02232f41ff4
+CI run: 34088822441
+NeoForge 21.1.247: PASS
+NeoForge 21.1.248: PASS
+JAR SHA-256 on both matrix legs:
+515ced7cb14d0ac94131388997c23547cd907a0348a2777a90abf5467d312913
+```
+
+Automatic evidence confirms on both exact NeoForge targets:
+
+- Java 21 / Minecraft 1.21.1 / exact CC:T 1.120.0 compilation;
+- accepted EXP-001 GenericSource regression checks remain green;
+- all EXP-002 client classes are packaged;
+- `assets/cctweakedhighaudio/sounds.json` is packaged;
+- no old HighAudio Mixin declaration/class/config is present;
+- development-server startup remains healthy;
+- the finished packaged JAR starts in a clean installed dedicated server, proving EXP-002 client classes do not contaminate dedicated-server loading.
 
 ## Prototype scope
 
@@ -61,15 +82,6 @@ Preserve `latest.log` and `debug.log` from the session.
 Only after the SPR-absent baseline is clean, a second short launch with exact SPR 1.21.1-1.5.1 may be used to answer one narrow EXP-002 question: does the same Minecraft-owned generated sound remain audible and receive the normal channel event with SPR installed?
 
 This is **not** MILESTONE-010 compatibility certification. Reverb/occlusion/EFX correctness and performance remain deferred to the dedicated SPR milestone.
-
-## Automatic evidence before manual launch
-
-Both NeoForge 21.1.247 and 21.1.248 should:
-
-- compile all EXP-002 client classes on Java 21 / Minecraft 1.21.1;
-- retain the accepted EXP-001 GenericSource checks;
-- package the EXP-002 classes and `assets/cctweakedhighaudio/sounds.json`;
-- keep dedicated-server startup clean, proving client-only EXP-002 code is not accidentally loaded on the server.
 
 ## GATE-002 pass conditions
 
