@@ -1,0 +1,10 @@
+{
+  "exp2.generated_pcm": {
+    "sounds": [
+      {
+        "name": "computercraft:empty",
+        "stream": true
+      }
+    ]
+  }
+}
