@@ -13,11 +13,13 @@ import java.util.concurrent.CompletableFuture;
 
 /** One Minecraft-owned streaming sound used by the EXP-003 capacity probe. */
 public final class Exp3CapacitySound extends AbstractSoundInstance {
+    private final long runToken;
     private final int index;
     private final Exp3CapacityStream stream;
 
-    public Exp3CapacitySound(int index, Vec3 position, Exp3CapacityStream stream) {
+    public Exp3CapacitySound(long runToken, int index, Vec3 position, Exp3CapacityStream stream) {
         super(GeneratedPcmSound.LOCATION, SoundSource.RECORDS, SoundInstance.createUnseededRandom());
+        this.runToken = runToken;
         this.index = index;
         this.stream = stream;
 
@@ -33,6 +35,10 @@ public final class Exp3CapacitySound extends AbstractSoundInstance {
     @Override
     public CompletableFuture<AudioStream> getStream(SoundBufferLibrary soundBuffers, Sound sound, boolean looping) {
         return CompletableFuture.completedFuture(stream);
+    }
+
+    public long runToken() {
+        return runToken;
     }
 
     public int index() {
