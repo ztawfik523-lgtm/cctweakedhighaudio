@@ -41,6 +41,11 @@ public final class Exp3CapacityController {
     private Exp3CapacityController() {
     }
 
+    public static boolean isBusy() {
+        drainCaptures();
+        return !sounds.isEmpty() && !finalLogged;
+    }
+
     public static String runCapacity(int count) {
         if (count < MIN_COUNT || count > MAX_COUNT) {
             return "EXP-003 capacity count must be between " + MIN_COUNT + " and " + MAX_COUNT;
@@ -52,16 +57,11 @@ public final class Exp3CapacityController {
 
         drainCaptures();
 
-        // Keep each measurement isolated. Sound/channel release crosses the sound thread, so do not silently stop
-        // a previous run and immediately consume the same streaming pool for the next one. A new run becomes legal
-        // only after tick() has observed a short consecutive-inactive grace window and logged the final snapshot.
         if (!sounds.isEmpty() && !finalLogged) {
             return "EXP-003: previous capacity probe has not finalized yet; wait for phase=final (or stop it and wait) before starting another count";
         }
         if (!sounds.isEmpty()) clearStateOnly();
 
-        // Load/generate the single shared PCM backing array before recording the per-run heap baseline. This avoids
-        // charging only the first (1-source) run for one-time shared PCM initialization.
         var sharedPcmBytes = Exp3CapacityStream.warmUpSharedPcm();
 
         activeRunToken = ++nextRunToken;
@@ -107,7 +107,6 @@ public final class Exp3CapacityController {
         return "EXP-003 capacity stop requested; wait for phase=final before starting another count";
     }
 
-    /** Called on Minecraft's sound thread by NeoForge. Keep this callback non-blocking and side-effect-light. */
     public static void onPlayStreaming(PlayStreamingSourceEvent event) {
         if (!(event.getSound() instanceof Exp3CapacitySound sound)) return;
 
@@ -155,15 +154,10 @@ public final class Exp3CapacityController {
         }
 
         var active = activeSoundCount();
-        if (active == 0) {
-            consecutiveInactiveTicks++;
-        } else {
-            consecutiveInactiveTicks = 0;
-        }
+        if (active == 0) consecutiveInactiveTicks++;
+        else consecutiveInactiveTicks = 0;
 
         if (ticksSinceRequest >= 5 && consecutiveInactiveTicks >= FINAL_INACTIVE_TICKS) {
-            // Drain once more before freezing the result. The consecutive-inactive window gives the sound thread time
-            // to deliver any final capture/release work and prevents the next capacity run from racing that cleanup.
             drainCaptures();
             finalLogged = true;
             logSnapshot("final");
