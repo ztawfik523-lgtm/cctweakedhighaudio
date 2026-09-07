@@ -17,11 +17,12 @@ See:
 
 - `ADR-0001`: CC:T required for v1.
 - `ADR-0002`: isolate CC:T internals.
-- `ADR-0003`: proposed additive `SpeakerPeripheral` Mixin.
+- `ADR-0003`: superseded additive `SpeakerPeripheral` Mixin fallback.
 - `ADR-0004`: proposed Minecraft-owned client audio.
 - `ADR-0005`: server-authoritative semantic sessions.
 - `ADR-0006`: content-addressed media.
 - `ADR-0007`: content transport separated from session control.
+- `ADR-0008`: proposed targeted `SpeakerPeripheral` GenericSource.
 
 ## 2. System boundary
 
@@ -35,7 +36,7 @@ See:
                              v
 +-----------------------------------------------------------+
 | HighAudio CC:T adapter                                   |
-| - Lua method surface                                     |
+| - GenericSource Lua method surface                       |
 | - IComputerAccess/event bridge                           |
 | - emitter resolution                                     |
 | - bounded argument copy/upload facade                    |
@@ -90,21 +91,30 @@ decoder/cache/session/network -> CC:T SpeakerPeripheral internals
 
 Minecraft/NeoForge types such as `ResourceKey<Level>`, `Vec3`, `ServerPlayer`, and network codecs are allowed where they are the real platform abstractions. We are isolating **CC:T implementation internals**, not pretending this is a platform-independent media framework.
 
+The current `GenericSource` candidate requires the exact CC:T implementation artifact at compile time because its first method parameter is the internal `SpeakerPeripheral` class. That dependency must remain confined to `integration/cct`; it must not leak into media/session/network/client systems.
+
 ## 4. CC:T integration [PROPOSED]
 
-Current leader: add HighAudio Lua methods to the exact CC:T 1.120.0 `SpeakerPeripheral` through a minimal additive Mixin (`ADR-0003`).
+Current leader: register a `GenericSource` targeted at exact CC:T 1.120.0 `SpeakerPeripheral` (`ADR-0008`).
 
 Why it leads:
 
 - the normal block speaker already exposes a concrete `SpeakerPeripheral`;
-- generic peripheral methods do not simply merge onto a block which already has a specific `IPeripheral`;
-- CC:T method discovery inspects public methods on the runtime class and finds `@LuaFunction` annotations;
-- Mixin can merge new methods and annotations into a target class;
-- a Mixin avoids replacing the peripheral object and therefore avoids duplicating `attach`, `detach`, `equals`, wired-modem identity, and native method behavior.
+- exact CC:T 1.120.0 offers public `ComputerCraftAPI.registerGenericSource` registration;
+- CC:T's generic method system applies methods based on the target parameter type and uses the same peripheral method supplier used for normal direct and wired peripheral method maps;
+- targeting `SpeakerPeripheral` therefore contributes HighAudio methods without replacing the existing `IPeripheral` object;
+- no CC:T bytecode transformation or Mixin configuration is required;
+- native attach/detach/equality and native speaker methods remain CC:T-owned.
 
-This is still gated by `EXP-001`.
+This remains gated by `EXP-001` / `GATE-001`.
 
-Important consequence: turtle and pocket speaker peripherals derive from `SpeakerPeripheral` through `UpgradeSpeakerPeripheral`, so a base-class Mixin may expose HighAudio methods there too. Initial runtime/product behavior for those emitters is not yet decided.
+Important limits/tradeoffs:
+
+- `SpeakerPeripheral` is not public CC:T API, so this is still exact-version internal coupling;
+- CC:T's `disabled_generic_methods` configuration can disable this source/method;
+- turtle and pocket speaker peripherals derive from `SpeakerPeripheral`, so the method may appear there too and must be observed/gated deliberately.
+
+Historical fallback: the additive base-class Mixin from `ADR-0003` passed automatic startup/application checks but was superseded before the manual gate because GenericSource is less invasive. If GenericSource fails real runtime proof, that Mixin is the first fallback before forwarding/capability replacement.
 
 ## 5. Server authority model [ACCEPTED]
 
