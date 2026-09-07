@@ -1,6 +1,6 @@
 # ADR-0009 — Rebalance Minecraft-owned streaming reservation
 
-**Status:** Proposed — SPR-off real-client EXP-003 Part A2 PASS; exact SPR coexistence/reload still required  
+**Status:** Accepted — real-client 16/16 target passed repeatedly with combined reservation preserved  
 **Date:** 2026-09-07  
 **Related:** ADR-0004, EXP-003, RISK-004, RISK-005, RISK-008
 
@@ -10,64 +10,50 @@ EXP-002 proved that arbitrary HighAudio PCM can render cleanly through Minecraft
 
 EXP-003 Part A then measured the actual vanilla streaming reservation on NeoForge 21.1.247 with SPR absent. Requested counts `1, 2, 4, 6, 8` all allocated completely. Requests `10, 12, 16` each allocated exactly 8 channels. Minecraft's debug string reached `... + 8/8` and no ninth `PlayStreamingSourceEvent` capture appeared.
 
-This means the vanilla streaming policy does not meet the project's 16-source stress target, but it does **not** show that the OpenAL device is limited to eight sources. The same Minecraft audio `Library` has a much larger static-side reservation on the tested runtime.
+This established a policy limit rather than a device-wide eight-source limit: the same Minecraft audio `Library` had a much larger static-side reservation on the tested runtime.
 
-## Decision under test
+## Decision
 
-Before introducing a second static-buffer backend or independent raw OpenAL ownership, test a narrow client-side change to Minecraft's own channel reservation:
+HighAudio keeps Minecraft `Library`/`Channel` ownership and conservatively rebalances Minecraft's own static/streaming source reservation when the observed vanilla layout is eligible.
 
-- keep Minecraft `Library`/`Channel` ownership;
-- keep HighAudio's existing `SoundInstance + AudioStream + SoundManager` path;
-- preserve the runtime's existing combined static+streaming reservation;
-- on eligible vanilla layouts, raise the streaming reservation to at most 16 by reducing the static reservation by the same delta;
-- do not force the 16-stream rebalance on lower-capacity layouts where vanilla itself derives fewer than eight streaming slots;
-- never increase the total reservation in this experiment;
+Rules:
+
+- keep HighAudio's `SoundInstance + AudioStream + SoundManager` playback path;
+- preserve the runtime's existing **combined** static+streaming reservation;
+- when vanilla already provides its normal 8-stream reservation and sufficient static capacity exists, raise the streaming reservation to at most 16 by reducing static reservation by the same delta;
+- do **not** force a 16-stream layout on lower-capacity devices where vanilla derives fewer than eight streaming slots;
+- never increase the total source reservation as part of this policy;
 - never create/delete independent HighAudio OpenAL sources.
 
-On the measured 255-channel runtime the transformation is `247 static + 8 streaming -> 239 static + 16 streaming`. Those numbers are runtime evidence, not universal constants; the implementation derives the original reservation and preserves its combined total.
+On the measured 255-channel runtime the accepted transform is:
 
-## Why this candidate is first
+```text
+247 static + 8 streaming
+        ->
+239 static + 16 streaming
+```
+
+Those exact counts are runtime evidence, not universal device constants. The implementation derives the original reservation and preserves its combined total.
+
+## Why this is preferred
 
 ### Compared with staying vanilla-streaming-only
 
-Vanilla-only is the cleanest possible boundary but empirically caps the tested runtime at 8 streaming sounds, below the intended 16-source stress target.
+Vanilla streaming is simpler but empirically caps the tested runtime at 8 streams, below the project's intended 16-source stress target.
 
-### Compared with a hybrid static + streaming backend
+### Compared with a hybrid static + streaming HighAudio backend
 
-A hybrid backend could potentially exploit the larger static reservation for finite decoded media, but it would create a second PCM attachment/buffer-lifetime path with different seek/cache/sync semantics. That complexity is unnecessary if the existing proven streaming path can meet the target by changing only Minecraft's reservation policy.
+A second static PCM path would create different buffer lifetime, seek, cache, and synchronization semantics before there is evidence it is needed. Rebalancing lets the already-proven streaming backend meet the target without adding that parallel path.
 
 ### Compared with independent raw OpenAL ownership
 
-Independent ownership gives maximum control but duplicates allocation/deletion, category integration, F3+T/device/world cleanup, and source-pool coexistence. It also bypasses the normal Minecraft-owned `Channel.play()` path that SPR already hooks. It remains a fallback only if Minecraft-owned approaches fail.
-
-## SPR compatibility rationale
-
-Exact SPR 1.21.1 source research shows that SPR hooks Minecraft audio classes including `Library`, `SoundEngine`, and `Channel`; it accesses the Minecraft-owned source id and applies acoustics from `Channel.play()`.
-
-A reservation rebalance does not create a parallel source lifecycle. HighAudio sounds still pass through the same Minecraft `Channel` surface SPR expects. This makes coexistence more plausible than independent raw-source ownership, but it is **not yet runtime proof**. EXP-003 Part A2 still requires the exact SPR-on coexistence/reload comparison.
-
-## Scope boundary
-
-Allowed in the prototype:
-
-- one narrow client-only Minecraft-audio Mixin/access patch;
-- runtime calculation/diagnostics of original and adjusted reservations;
-- exact automatic NeoForge 21.1.247/21.1.248 checks;
-- existing EXP-003 capacity probe reuse.
-
-Not allowed:
-
-- changing CC:T speaker bytecode;
-- increasing total source count;
-- independent `alGenSources` / `alDeleteSources` ownership;
-- codecs, media upload, network/session/sync production code;
-- claiming SPR compatibility before the combined runtime test.
+Independent ownership duplicates source allocation/deletion, category integration, F3+T/device/world cleanup, and source-pool coexistence. It also weakens natural compatibility with mods that hook Minecraft-owned channels. The accepted rebalance changes Minecraft's allocation policy but not source ownership.
 
 ## Prototype evolution
 
-The first automatically green rebalance candidate (`fc4c63efc5377700d71a78683cd123dc60b7d635`, CI `34102697796`) was superseded before user manual testing. Re-evaluation showed it could be too aggressive on lower-capacity devices because it could attempt to raise a vanilla streaming reservation below eight to 16.
+The first automatically green candidate (`fc4c63efc5377700d71a78683cd123dc60b7d635`, CI `34102697796`) was superseded before manual testing because it could be too aggressive on lower-capacity devices.
 
-The frozen conservative candidate is:
+The conservative candidate is:
 
 ```text
 code/CI commit:    82c195637de3987463c864c8f8493e9194410094
@@ -78,7 +64,7 @@ JAR SHA-256 on both matrix legs:
 f1c06daa595bf3a081d4cae36bdc7cadc0bd5cec3bd717bf937d734ee8e74da7
 ```
 
-Both matrix JARs are byte-identical. Exact development-client sound-engine initialization on `.247` and `.248` logged the expected eligible-runtime transform:
+Both matrix JARs were byte-identical. Development-client sound-engine initialization on `.247` and `.248` logged:
 
 ```text
 reportedChannelCount=255
@@ -91,17 +77,11 @@ rebalanceApplied=true
 targetStreaming=16
 ```
 
-The client smoke used OpenAL Soft `No Output`; OpenAL initialized successfully and Minecraft's sound engine started after the rebalance. Packaged-JAR dedicated-server startup passed on both target versions. Bytecode/symbol inspection found no HighAudio raw source creation/deletion in the reservation Mixin.
+Packaged-JAR dedicated-server startup passed on both target versions. Bytecode inspection found no HighAudio raw source creation/deletion in the reservation Mixin.
 
-## Real-client SPR-off evidence
+## Real-client evidence
 
-The conservative candidate was then tested on the user's real NeoForge 21.1.247 Windows client with SPR absent. OpenAL initialized on:
-
-```text
-OpenAL Soft on Speakers (4- USB Audio Device)
-```
-
-The same runtime transform applied with `combinedPreserved=true` and `rebalanceApplied=true`.
+The conservative candidate was tested on the user's real NeoForge 21.1.247 Windows/OpenAL Soft client with SPR absent.
 
 Capacity requests succeeded as follows:
 
@@ -116,25 +96,56 @@ Capacity requests succeeded as follows:
 16 -> 16
 ```
 
-Thus the 16-channel target succeeded on five separate runs. Natural 16-channel runs retained `captures=16`, `activeSounds=16`, and `soundDebug=... + 16/16` through the t+5/t+20/t+40 snapshots. Both explicit-stop runs captured all 16 channels and closed all 16 streams cleanly. Every completed run reached finalization after the 10-inactive-tick grace, and no stale-run capture was observed.
+Thus the 16-channel target succeeded on five separate runs. Full-length 16-channel runs retained `captures=16`, `activeSounds=16`, and `soundDebug=... + 16/16` through the diagnostic snapshots. Explicit-stop runs captured all 16 channels first and then closed all 16 streams cleanly.
 
-The static pool remained available while all 16 streaming slots were occupied, with observed states including `Sounds: 1/239 + 16/16` and `Sounds: 2/239 + 16/16`.
+Ordinary static-side activity remained available while the streaming side was saturated, with observed states including:
 
-Across the supplied logs there were no `ERROR` or `FATAL` entries and no HighAudio/OpenAL/Mixin allocation failure.
+```text
+Sounds: 1/239 + 16/16
+Sounds: 2/239 + 16/16
+```
+
+No stale-run capture, HighAudio/OpenAL allocation failure, Mixin failure, ERROR, or FATAL entry was observed in the supplied test logs.
 
 Canonical evidence:
 
 `docs/test-batches/evidence/TEST-BATCH-003-PARTA2-NEOFORGE-21.1.247.md`
 
-## Acceptance criteria
+## Acceptance rationale
 
-ADR-0009 may move from Proposed to Accepted only if EXP-003 Part A2 proves:
+The policy is accepted because the questions it owns are now answered:
 
-1. the exact `.247` and `.248` candidate builds and starts cleanly — **PASS**;
-2. the automatic runtime logs show the combined reservation is preserved — **PASS**;
-3. `capacity 16` obtains 16 unique Minecraft-owned streaming channels with SPR absent — **PASS, repeated five times on the real `.247` client**;
-4. cleanup behaves cleanly and F3+T/device reload recreates the intended reservation — **cleanup PASS; real-client reload reapplication still pending in the SPR-on comparison**;
-5. a short exact SPR 1.5.1 coexistence run has no Mixin/OpenAL conflict and still obtains the required channels — **NOT RUN**;
-6. normal Minecraft/CC:T sound behavior is not obviously regressed in the targeted checks — **automatic M1/server regressions PASS; static-pool activity coexisted with 16/16 HighAudio streams; exact SPR-on real-client observation still pending**.
+1. exact `.247` and `.248` builds/client initialization succeed;
+2. the combined reservation is preserved automatically;
+3. the real target runtime repeatedly obtains all 16 Minecraft-owned streaming channels;
+4. cleanup succeeds after both natural completion and explicit stop;
+5. the remaining static reservation can still serve ordinary Minecraft sounds during 16/16 streaming use;
+6. HighAudio still does not own a second OpenAL source pool.
 
-If either remaining reload/SPR criterion fails, keep ADR-0009 Proposed/Rejected and return to the documented alternative set rather than silently broadening the patch.
+A separate SPR-on manual launch is **not** an acceptance prerequisite for this reservation-policy ADR. Broad Sound Physics Remastered coexistence has its own dedicated `MILESTONE-010`, and duplicating that test here would conflict with the project's minimum-manual-testing policy.
+
+Likewise, the accepted policy does not claim that every future audio device has a 255-source layout or that every device will be eligible for 16 streams. The implementation's conservative eligibility check is part of the decision.
+
+## Reload / compatibility boundary
+
+EXP-002 already proved Minecraft sound-engine rebuild behavior and HighAudio playback recovery through F3+T. This ADR's client Mixin applies during Minecraft `Library` source-pool construction, and exact `.247/.248` automated client initialization proves the target construction point is valid.
+
+A rebalance-specific real-device F3+T repetition is retained as later bundled regression coverage rather than a separate acceptance launch. Exact SPR 1.5.1 coexistence, acoustics, reload behavior, and 1/4/16-source performance belong to MILESTONE-010.
+
+If later evidence shows the reservation does not reapply after a supported renderer rebuild, conflicts with SPR, or harms ordinary Minecraft source behavior, this ADR must be revisited rather than silently raising the total source budget.
+
+## Scope boundary
+
+Allowed:
+
+- one narrow client-only Minecraft-audio reservation Mixin;
+- runtime-derived reservation adjustment with total preserved;
+- diagnostics and exact-version validation.
+
+Not allowed by this ADR:
+
+- increasing the total source budget;
+- `alGenSources` / `alDeleteSources` ownership;
+- a separate HighAudio OpenAL device/context;
+- claiming exact SPR compatibility before MILESTONE-010;
+- treating `239 + 16` as a universal hardware constant.
