@@ -24,7 +24,11 @@ Accepted/proposed decisions:
 - `ADR-0009`: **Accepted** conservative Minecraft streaming-reservation rebalance.
 - `ADR-0010`: **Proposed** playback timing intents (`immediate`, `together`, optional `scheduled`).
 
-## 2. System boundary
+Implementation boundary: the targeted CC:T integration, Minecraft-owned diagnostic playback/lifecycle path, capacity/timing diagnostics, and total-preserving reservation policy exist today. The content, upload, network, cache, decoder, session, audience, and production synchronization components below are planned unless a section explicitly says validated or Accepted. See [`CURRENT-STATE.md`](CURRENT-STATE.md) for the authoritative status summary.
+
+## 2. Target product system boundary
+
+This diagram combines validated foundations with planned product components; it is not an inventory of currently implemented classes.
 
 ```text
 +-----------------------------------------------------------+
@@ -101,7 +105,7 @@ Real M1 evidence proved the method on block, wired, turtle, pocket, and reconstr
 
 The older SpeakerPeripheral Mixin remains fallback history only.
 
-## 5. Server authority model
+## 5. Server authority model — Planned
 
 The server owns **semantic media truth**, not client renderer state.
 
@@ -123,7 +127,7 @@ optional SyncGroupId
 
 Client buffering/decoding state is not global session truth. A slow client must not set the whole server session to `BUFFERING`.
 
-## 6. Timeline model
+## 6. Timeline model — Planned
 
 Semantic media position is represented in sample frames:
 
@@ -137,7 +141,7 @@ Pause-aware versus real-monotonic server clock remains a deliberate M5 product d
 
 Renderer clocks are separate from server/session time. OpenAL device clock values are local per client/device and must never be exposed as the global session clock.
 
-## 7. Identity model
+## 7. Identity model — Planned
 
 Keep identities distinct:
 
@@ -149,7 +153,7 @@ Keep identities distinct:
 
 Do not use CC:T's native speaker source UUID as durable `EmitterId` without explicit persistence/lifecycle proof.
 
-## 8. Content model
+## 8. Content model — Planned
 
 Finite media is content-addressed:
 
@@ -173,7 +177,7 @@ N lightweight positional render sources
 
 Do not always fully decode long media. Static-vs-streaming decisions must be budget-aware.
 
-## 9. Lua media ingestion
+## 9. Lua media ingestion — Planned
 
 Java cannot assume a CC filesystem path is directly readable through `IComputerAccess`.
 
@@ -193,7 +197,7 @@ highaudio.playFile(speaker, "/music/song.wav")
 
 by reading the CC filesystem itself and feeding the bounded low-level upload API.
 
-## 10. Network architecture
+## 10. Network architecture — Planned
 
 Session/control traffic and large content transport remain separate.
 
@@ -220,7 +224,7 @@ Transport rules:
 
 M4 should implement only the minimum bounded content-transfer subset needed for one finite-file vertical slice.
 
-## 11. Audience and recovery
+## 11. Audience and recovery — Planned
 
 `AudienceManager` is distinct from vanilla chunk tracking. A client entering an active session's audience eventually receives authoritative state plus content if needed and reconstructs the correct play position once ready.
 
@@ -259,7 +263,7 @@ The implementation only opts in on eligible normal layouts and leaves weaker-tha
 
 Real client testing repeatedly achieved 16/16 streams and still observed static-side Minecraft sound allocation.
 
-## 14. Playback timing intents
+## 14. Playback timing intents — Proposed
 
 `ADR-0010` remains Proposed because the optional scheduled path is not yet end-to-end proven with a real session timeline. The semantic model is nevertheless the current design direction.
 
@@ -291,7 +295,7 @@ No fixed 100 ms public delay exists. Lead time is only a preparation/scheduling 
 
 End-to-end scheduled timing is deferred until real production session timing exists; it is not required for ordinary immediate playback or M3 closure.
 
-## 15. Long-running synchronization
+## 15. Long-running synchronization — Planned
 
 Initial synchronized start does **not** prove a long stream can never drift or underrun.
 
@@ -308,7 +312,7 @@ conservative correction
 
 OpenAL source offsets/device clocks are observations, not global session authority.
 
-## 16. Decoder architecture
+## 16. Decoder architecture — Planned
 
 Codec-specific logic sits behind a common concept such as:
 
@@ -332,7 +336,7 @@ Implementation order:
 
 Physical positional speakers should render mono by default; stereo/multichannel input is downmixed for one positional emitter unless a future explicit routing design says otherwise.
 
-## 17. Moving emitters
+## 17. Moving emitters — Planned
 
 Media/session state is separate from emitter transform:
 
@@ -343,13 +347,13 @@ EmitterId -> dimension + current transform
 
 Content is never resent merely because an emitter moves. Turtle/pocket/VS2 production behavior remains M9.
 
-## 18. Sound Physics Remastered
+## 18. Sound Physics Remastered — Deferred to M10
 
 Exact SPR 1.21.1-1.5.1 compatibility belongs to M10.
 
 Keeping Minecraft ownership is intended to maximize natural compatibility with SPR's Minecraft-channel interception model. Do not duplicate M10 manual testing during every earlier milestone. If exact M10 evidence shows an adapter is required, keep it narrow and lifecycle-aware.
 
-## 19. Threading ownership
+## 19. Threading ownership — Planned rules
 
 | Thread/domain | Responsibility |
 |---|---|
@@ -378,8 +382,8 @@ Do not infer these from implementation convenience:
 - SPR adapter need;
 - moving-emitter identity/persistence.
 
-## 21. Current implementation focus
+## 21. Next implementation milestone
 
-M0–M3 are complete. M4 is the first true finite-file vertical slice. It should add only enough upload/content/network/cache/WAV/session glue to make one normal placed speaker play one real file end-to-end while preserving the accepted architecture and bounded-resource rules.
+M0–M3 are complete. M4 has not started and is the first true finite-file vertical slice. It should add only enough upload/content/network/cache/WAV/session glue to make one normal placed speaker play one real file end-to-end while preserving the accepted architecture and bounded-resource rules.
 
 Do not pull MP3, production synchronization groups, moving emitters, URL/live streaming, or broad SPR compatibility into that first slice.

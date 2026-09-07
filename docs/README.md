@@ -13,7 +13,7 @@ The authoritative information is intentionally split by **kind of knowledge**:
 
 | Need | Canonical file |
 |---|---|
-| What should a new engineering chat read first? | [`HANDOFF.md`](HANDOFF.md) |
+| What is implemented now and what comes next? | [`CURRENT-STATE.md`](CURRENT-STATE.md) |
 | What is proven about exact versions? | [`VERIFIED-FACTS.md`](VERIFIED-FACTS.md) |
 | What architecture are we currently building? | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
 | Why did we make an important choice? | [`decisions/`](decisions/) |
@@ -24,16 +24,16 @@ The authoritative information is intentionally split by **kind of knowledge**:
 | Where did a claim/library/license come from? | [`SOURCES.md`](SOURCES.md) |
 | What does a term mean? | [`GLOSSARY.md`](GLOSSARY.md) |
 
-## Authority order
+## Authority and evidence order
 
-When documents disagree, use this order:
+`CURRENT-STATE.md` is the authority for present implementation and milestone status. It summarizes rather than overrides evidence. When factual or architectural claims disagree, use this order:
 
 1. **Completed prototype/runtime result** for the exact target stack.
 2. **Pinned exact-version source fact** in `VERIFIED-FACTS.md`.
 3. **Accepted ADR**, provided its assumptions have not been invalidated by newer facts/results.
 4. Current `ARCHITECTURE.md`.
 5. `ROADMAP.md` and design notes.
-6. Old research prose, chat history, CC:HQ behavior, or assumptions.
+6. Historical experiment prose, old handoffs/chat history, CC:HQ behavior, or assumptions.
 
 A result which invalidates an ADR does not get hidden. Mark the ADR `Superseded` or `Rejected`, link the replacement, and update the affected fact/risk/roadmap entries.
 

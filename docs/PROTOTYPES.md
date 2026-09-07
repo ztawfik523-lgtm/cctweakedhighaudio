@@ -1,11 +1,11 @@
 # Prototype and experiment ledger
 
-**Status:** canonical unresolved-runtime ledger  
+**Status:** canonical experiment ledger (completed and unresolved)
 **Target stack:** Minecraft 1.21.1 / Java 21 / CC:Tweaked 1.120.0 / NeoForge 21.1.247–21.1.248  
 **Last reviewed:** 2026-09-07  
 **Search tags:** `EXP`, `PROTOTYPE`, `PASS-FAIL`, `RUNTIME-EVIDENCE`
 
-An experiment is marked PASS only when the exact implementation/runtime evidence required by its gate is preserved. Source research and automatic checks may support a result but must not be mislabeled as manual runtime evidence.
+This ledger preserves completed experiments alongside unresolved and deferred ones. An experiment is marked PASS only when the exact implementation/runtime evidence required by its gate is preserved. Source research and automatic checks may support a result but must not be mislabeled as manual runtime evidence. See [`CURRENT-STATE.md`](CURRENT-STATE.md) for present implementation status.
 
 ---
 
@@ -498,4 +498,4 @@ Decision impact:
 Follow-up experiment:
 ```
 
-Then update `VERIFIED-FACTS.md`, affected ADRs, risks, roadmap, and handoff in the same development phase.
+Then update `VERIFIED-FACTS.md`, affected ADRs, risks, roadmap, and `CURRENT-STATE.md` in the same development phase.

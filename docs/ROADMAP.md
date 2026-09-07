@@ -135,7 +135,7 @@ Synthetic pause/resume/seek group transport is deferred to M5/M7 where real auth
 
 ## MILESTONE-004 — first vertical slice: finite local media, one block speaker
 
-**Status:** IN PROGRESS
+**Status:** NOT STARTED
 
 **Goal:** play one real finite file end-to-end through a normal placed CC:T speaker using the accepted M1–M3 architecture.
 
