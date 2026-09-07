@@ -45,6 +45,9 @@ public final class GenericSourceSelfCheck {
         if (!missingNative.isEmpty()) {
             throw new IllegalStateException("[EXP-001] SpeakerPeripheral native methods missing from method supplier: " + missingNative);
         }
+        if (supplier.getSelfMethods(new UnrelatedPeripheral()).containsKey("highAudioProbe")) {
+            throw new IllegalStateException("[EXP-001] highAudioProbe leaked onto an unrelated IPeripheral");
+        }
 
         try {
             var result = probe.apply(target, fakeLuaContext(), fakeComputerAccess(), new ObjectArguments());
@@ -63,7 +66,7 @@ public final class GenericSourceSelfCheck {
         }
 
         HighAudio.LOGGER.info(
-            "[EXP-001] GenericSource method-supplier self-check PASS sourceId={} probePresent=true probeInvocation=true nativeMethodsPresent={}",
+            "[EXP-001] GenericSource method-supplier self-check PASS sourceId={} probePresent=true probeInvocation=true speakerOnly=true nativeMethodsPresent={}",
             source.id(), REQUIRED_NATIVE_METHODS
         );
     }
@@ -75,21 +78,23 @@ public final class GenericSourceSelfCheck {
      * CC:T's disabled_generic_methods filtering are applied when ServerContext is constructed.</p>
      */
     public static boolean verifyLiveServerContext(MinecraftServer server, SpeakerGenericSource source) {
-        var methods = ServerContext.get(server).peripheralMethods().getSelfMethods(new ProbeSpeakerPeripheral());
+        var supplier = ServerContext.get(server).peripheralMethods();
+        var methods = supplier.getSelfMethods(new ProbeSpeakerPeripheral());
         var probePresent = methods.containsKey("highAudioProbe");
         var missingNative = missingNativeMethods(methods.keySet());
+        var leakedToUnrelatedPeripheral = supplier.getSelfMethods(new UnrelatedPeripheral()).containsKey("highAudioProbe");
 
-        if (!probePresent || !missingNative.isEmpty()) {
+        if (!probePresent || !missingNative.isEmpty() || leakedToUnrelatedPeripheral) {
             HighAudio.LOGGER.error(
-                "[EXP-001] live ServerContext self-check FAIL sourceId={} probePresent={} missingNativeMethods={}. " +
-                    "Check GenericSource registration timing and CC:T disabled_generic_methods configuration.",
-                source.id(), probePresent, missingNative
+                "[EXP-001] live ServerContext self-check FAIL sourceId={} probePresent={} missingNativeMethods={} leakedToUnrelatedPeripheral={}. " +
+                    "Check GenericSource registration timing, target matching, and CC:T disabled_generic_methods configuration.",
+                source.id(), probePresent, missingNative, leakedToUnrelatedPeripheral
             );
             return false;
         }
 
         HighAudio.LOGGER.info(
-            "[EXP-001] live ServerContext self-check PASS sourceId={} probePresent=true nativeMethodsPresent={}",
+            "[EXP-001] live ServerContext self-check PASS sourceId={} probePresent=true speakerOnly=true nativeMethodsPresent={}",
             source.id(), REQUIRED_NATIVE_METHODS
         );
         return true;
@@ -142,6 +147,18 @@ public final class GenericSourceSelfCheck {
         @Override
         protected SpeakerPosition getPosition() {
             return null;
+        }
+
+        @Override
+        public boolean equals(IPeripheral other) {
+            return this == other;
+        }
+    }
+
+    private static final class UnrelatedPeripheral implements IPeripheral {
+        @Override
+        public String getType() {
+            return "exp001_unrelated";
         }
 
         @Override
