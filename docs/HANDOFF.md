@@ -3,7 +3,7 @@
 **Status:** canonical chat/session handoff  
 **Target stack:** Minecraft 1.21.1 / Java 21 / CC:Tweaked 1.120.0 / NeoForge 21.1.247–21.1.248  
 **Prepared:** 2026-09-07  
-**Current branch:** `milestone-003-exp-003-capacity-sync`  
+**Current branch:** `milestone-003-exp-003-capacity-sync-rebalance`  
 **Next gate:** `MILESTONE-003` / `EXP-003` / `GATE-003`
 
 Exact runtime/prototype evidence remains more authoritative than this summary.
@@ -77,22 +77,11 @@ Important EXP-002 constraints carried into EXP-003:
 
 ## MILESTONE-003 / EXP-003 — current work
 
-Goal: measure the real Minecraft-owned streaming capacity through the project's 16-source stress target, then select a measured local multi-source synchronization mechanism before production media/session architecture hardens around guesses.
+Goal: establish a Minecraft-owned capacity policy that can meet the intended stress target, then select a measured local multi-source synchronization mechanism before production media/session architecture hardens around guesses.
 
-### Part A — re-audited capacity probe
+### Part A vanilla baseline — PASS
 
-The first automatically green candidate was **superseded before manual testing** after re-audit found measurement-quality issues:
-
-```text
-old code commit: abe6063f46077fd74c0a83d05660cf07e0f3a33c
-old CI run:     34092379023
-old JAR SHA:
-3e4b487221a39b13cfe5fc2382c6317c2f4ec60e38b8342fe0fffa3f38991b15
-```
-
-Do not use that artifact for manual evidence.
-
-Frozen strengthened Part A candidate:
+Frozen strengthened baseline candidate:
 
 ```text
 code commit:       a500f3bee773e4e5558fe3473367927ece637f9b
@@ -103,41 +92,86 @@ JAR SHA-256:
 553919083f8d998fd7d3b0e143f8e76ad3da7b78862ee84c93d886110be41055
 ```
 
-Both exact matrix legs passed compilation, strengthened M3 package checks, accepted EXP-001 development-server regression smoke, and clean finished packaged-JAR dedicated-server startup. Both produced byte-identical HighAudio JARs.
+Real NeoForge 21.1.247 client evidence with SPR absent tested requested counts:
 
-Artifact inspection confirmed:
+```text
+1, 1, 2, 4, 6, 8, 10, 12, 16
+```
 
-- `Exp3CapacityStream`, `Exp3CapacitySound`, `Exp3CapacityController`, client event hooks are present;
-- no HighAudio Mixin residue;
-- no packaged `dan200/` CC:T classes;
-- no raw LWJGL OpenAL/source-control symbols in EXP-003 classes;
-- no `Channel.stopped()` call in EXP-003 classes.
+Measured allocation:
 
-Re-audit changes that make the measurement acceptable:
+```text
+1  -> 1
+2  -> 2
+4  -> 4
+6  -> 6
+8  -> 8
+10 -> 8
+12 -> 8
+16 -> 8
+```
 
-- the streaming resource/event path was checked: a unique `PlayStreamingSourceEvent` occurs only after Minecraft has attached the stream to a real channel and called `channel.play()`;
-- baseline counts are 1/4/8/16, but any 1..16 count is accepted for same-session threshold refinement;
-- `16/16` means **at least 16 under tested conditions**, not an absolute Minecraft/OpenAL maximum;
-- a new run is refused until the previous run has been inactive for 10 consecutive client ticks and logs `phase=final`;
-- all streams share one immutable prewarmed PCM backing array while keeping independent cursor/close state;
-- each run/sound carries a run token to reject stale events;
-- sound-thread `PlayStreamingSourceEvent` only enqueues an immutable diagnostic record into a `ConcurrentLinkedQueue`;
-- render-thread code owns ordinary counters/maps and uses `SoundManager.isActive`, stream closure, and `SoundManager.getDebugString()`;
-- no cross-thread `Channel.stopped()` polling remains;
-- captured channel identity is diagnostic only;
-- whole-probe heap delta is rough end-to-end evidence, not per-channel memory cost.
+Minecraft's own debug string reached `... + 8/8` and no ninth `PlayStreamingSourceEvent` capture appeared. All actually allocated streams remained active through the early snapshots and closed cleanly after the 10-inactive-tick finalization grace.
 
-Manual Part A runtime evidence is still NOT RUN. Use `docs/test-batches/TEST-BATCH-003.md` and the frozen SHA above.
+Conclusion: **vanilla Minecraft's streaming reservation on the tested runtime is 8 channels**. This is a policy/counter limit, not a claim that the OpenAL device has only eight sources.
+
+Canonical evidence:
+
+`docs/test-batches/evidence/TEST-BATCH-003-NEOFORGE-21.1.247.md`
+
+### Re-evaluation after the 8-channel result
+
+Do not jump straight to a static-audio backend or independent raw OpenAL ownership.
+
+The strongest next candidate is a narrow **Minecraft-owned source-reservation rebalance**:
+
+- keep the existing `SoundInstance + AudioStream + SoundManager` playback path;
+- keep Minecraft `Library`/`Channel` ownership;
+- preserve the runtime's existing combined static+streaming reservation;
+- reserve up to 16 of those existing slots for streaming;
+- reduce the static reservation by the same delta;
+- do not increase the total source budget;
+- do not add HighAudio-owned `alGenSources`/`alDeleteSources` lifecycle.
+
+On the measured runtime this is expected to move from `247 static + 8 streaming` to `239 static + 16 streaming`, but that split is **not a universal constant** and must be derived from the runtime's existing limits.
+
+Why this candidate ranks ahead of the alternatives:
+
+1. EXP-002 already proved the Minecraft-owned streaming backend and lifecycle.
+2. The failure is specifically the streaming reservation, not PCM rendering.
+3. Minecraft 1.21.1 exposes distinct static/streaming channel pools/counters.
+4. Existing 1.21-family source-limit implementations demonstrate that these pool sizes are technically patchable.
+5. SPR 1.21.1 hooks Minecraft `Library`/`SoundEngine`/`Channel` and `Channel.play()`. Keeping Minecraft-owned channels preserves the path SPR already expects; independent sources would require a separate compatibility design.
+
+### Part A2 — next implementation
+
+Branch:
+
+`milestone-003-exp-003-capacity-sync-rebalance`
+
+Build the smallest client-only experimental patch that changes only the Minecraft audio reservation. Required diagnostics on every sound-engine init/reload:
+
+```text
+originalStatic=...
+originalStreaming=...
+newStatic=...
+newStreaming=...
+combinedPreserved=true/false
+```
+
+Automatic checks must cover NeoForge 21.1.247 and 21.1.248, packaged-JAR dedicated-server startup, M1/M2/M3 regression fixtures, Mixin application, and absence of HighAudio-owned raw source allocation.
+
+Only after those checks pass should another manual launch occur. First manual run is SPR absent and only needs `capacity 8` then `capacity 16`. SPR-on comparison follows only if the clean baseline reaches 16/16.
+
+See `docs/test-batches/TEST-BATCH-003.md` for exact acceptance criteria.
 
 ### Part B — synchronization remains undecided
 
-Do not silently choose among the meaningful architectural options before Part A evidence is understood:
+Do not silently choose among the synchronization options before Part A2 is understood:
 
 - **A — pure Minecraft/high-level scheduling:** cleanest lifecycle/compatibility, possibly looser skew and weaker renderer-position visibility;
 - **B — narrow accessor/control of Minecraft-owned OpenAL source:** preserves Minecraft ownership while enabling precise offsets/vector start, but adds localized exact-version coupling and must prove no preparation leak;
-- **C — independent raw OpenAL ownership:** maximum control but duplicates source/lifecycle/category/reload/world cleanup and has the highest SPR/source-pool cost; fallback only if A and B fail.
-
-EXP-003 Part B must measure escaped preparation audio, 2/4/8/16 start skew, pause/resume skew, renderer/sample offset reliability, and available timing/latency extensions rather than assuming them.
+- **C — independent raw OpenAL ownership:** maximum control but duplicates source/lifecycle/category/reload/world cleanup and bypasses the normal SPR-facing Minecraft channel path; fallback only if Minecraft-owned approaches fail.
 
 ## Still deferred
 
@@ -145,4 +179,4 @@ Do not start real media upload, codecs, ContentId/cache/transfer, server MediaSe
 
 ## Manual-test cadence
 
-Keep implementation/source/CI checks frequent but batch user-only Minecraft observations. MILESTONE-003 Part A should use the single consolidated client launch described in `TEST-BATCH-003`; do not request repeated launches for small patches.
+Keep implementation/source/CI checks frequent but batch user-only Minecraft observations. Do not request another client launch until the Part A2 candidate has passed exact automatic checks and artifact inspection.
