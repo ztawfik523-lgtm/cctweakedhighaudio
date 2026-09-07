@@ -28,6 +28,11 @@ public final class Exp3CapacityStream implements AudioStream {
     private int offset;
     private boolean closed;
 
+    /** Force the single shared PCM backing array to exist before a per-run heap baseline is recorded. */
+    public static int warmUpSharedPcm() {
+        return SHARED_PCM.length;
+    }
+
     @Override
     public AudioFormat getFormat() {
         return FORMAT;
