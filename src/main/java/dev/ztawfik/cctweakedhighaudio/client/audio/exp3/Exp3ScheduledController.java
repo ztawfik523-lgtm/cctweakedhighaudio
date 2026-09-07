@@ -318,7 +318,10 @@ public final class Exp3ScheduledController {
         if (referenceClockNs != Long.MIN_VALUE) {
             for (var i = 0; i < ids.length; i++) {
                 if (!valid[i]) continue;
-                var elapsedFramesToReference = (referenceClockNs - sourceClocks[i])
+                var advancingNanos = advancingNanosBetween(
+                    sourceClocks[i], referenceClockNs, trial.sourceStartDeviceClockNs
+                );
+                var elapsedFramesToReference = advancingNanos
                     * (double) Exp3SyncStream.SAMPLE_RATE / 1_000_000_000.0;
                 var compensated = mediaOffsets[i] + elapsedFramesToReference;
                 compensatedMediaOffsets[i] = compensated;
@@ -343,6 +346,19 @@ public final class Exp3ScheduledController {
             Arrays.toString(rawOffsets), Arrays.toString(compensatedMediaOffsets),
             Thread.currentThread().getName()
         ));
+    }
+
+    /**
+     * A future-scheduled OpenAL source reports AL_PLAYING while its offset remains frozen until the
+     * scheduled source-start clock. Only the part of the query-to-reference interval after that clock
+     * can be converted into advancing sample frames.
+     */
+    private static long advancingNanosBetween(long sampleClockNs, long referenceClockNs, long sourceStartClockNs) {
+        if (referenceClockNs <= sampleClockNs || sourceStartClockNs < 0L || referenceClockNs <= sourceStartClockNs) {
+            return 0L;
+        }
+        var advancingFrom = Math.max(sampleClockNs, sourceStartClockNs);
+        return Math.max(0L, referenceClockNs - advancingFrom);
     }
 
     private static void drainEvents() {
