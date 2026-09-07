@@ -1,6 +1,6 @@
 # TEST-BATCH-003 timing-mode addendum
 
-**Status:** AUTOMATIC C-CAPABILITY PROTOTYPE IN PROGRESS  
+**Status:** C CAPABILITY AUTO PASS — SCHEDULED TRIAL HARNESS BUILDING  
 **Milestone:** MILESTONE-003 / EXP-003  
 **Branch:** `milestone-003-exp-003-timing-modes`  
 **Decision:** `ADR-0010` Proposed
@@ -52,7 +52,7 @@ Exact platform research supports a narrow third primitive:
 - Minecraft 1.21.1 `SoundEngine` owns a private `Library` and `Library` owns the current OpenAL device handle;
 - HighAudio already proved it can access Minecraft-owned Channel source ids without creating/deleting sources.
 
-The scheduled prototype must remain narrow:
+The scheduled prototype remains narrow:
 
 1. read `SoundEngine.library`;
 2. read `Library.currentDevice`;
@@ -62,27 +62,71 @@ The scheduled prototype must remain narrow:
 6. do not create/delete OpenAL sources/devices/contexts;
 7. do not add production media/session/network behavior.
 
-## Automatic gate before any user test
+## Automatic C capability gate — PASS
 
-No manual Minecraft launch is justified merely to discover whether C is compile/runtime-addressable.
+Code/capability probe commit:
 
-The exact NeoForge 21.1.247 and 21.1.248 matrix must first prove:
+```text
+dc1a62265f1ba4165929938a41e7f460acd70301
+```
 
-- Java compilation against the exact target stack;
-- Mixin accessors for `SoundEngine.library` and `Library.currentDevice` apply during real client initialization;
-- LWJGL timed-start/device-clock symbols link successfully;
-- capability inspection executes on Minecraft's sound thread;
-- client diagnostics report the actual capability booleans and a non-error device-clock query when available;
-- existing 16-stream reservation patch and M1/server regressions remain green;
-- the timed-start helper contains no `alGenSources`, `alDeleteSources`, device creation, or context creation.
+CI run:
 
-Only if this automatic gate is clean should scheduled playback be folded into a later consolidated manual M3 test. A standalone user launch for capability discovery is explicitly disallowed by `docs/TESTING.md`'s minimum-manual-testing policy.
+```text
+34114885331
+```
 
-## Semantics under consideration
+Both exact NeoForge 21.1.247 and 21.1.248 jobs passed build, packaged verification, development-client sound-engine initialization, accepted M1 server regression, and packaged-JAR dedicated-server smoke.
+
+The first `SoundEngineLoadEvent` occurs before the OpenAL library/device has been loaded and therefore intentionally reports unavailable capability. This pre-init line is not an availability result.
+
+After Minecraft initializes its OpenAL device, both matrix clients report from the `Sound engine` thread:
+
+```text
+sourceStartDelay=true
+sourceLatency=true
+deviceClock=true
+available=true
+detail=ok
+```
+
+and the `ALC_DEVICE_CLOCK_SOFT` query returns successfully. The CI `No Output`/null OpenAL device reports an initial clock value of `0`, which is valid for a newly initialized device and is not treated as an audible-device timing measurement.
+
+A first version of the probe incorrectly read LWJGL's process/router `ALCCapabilities` and therefore reported `deviceClock=false` despite querying a real device handle. Re-evaluation corrected the check to call `alcIsExtensionPresent(currentDevice, "ALC_SOFT_device_clock")` on Minecraft's actual device. This is the canonical capability check.
+
+Automatic capability conclusion:
+
+- exact 1.21.1/LWJGL/NeoForge target can address the scheduled-start and device-clock bindings;
+- the private Minecraft accessors apply through real client initialization;
+- the target OpenAL Soft implementation exposes the required capabilities on the actual device;
+- the device clock can be queried from Minecraft's sound thread;
+- no manual Minecraft launch was required to establish this capability boundary.
+
+## Scheduled trial harness — current work
+
+The branch now includes diagnostic-only `Exp3ScheduledSound` / `Exp3ScheduledController` code. It reuses Minecraft-owned channels and the same 100 ms silent-preroll PCM used by the earlier vector experiment, pauses/rewinds each captured source, then calls the capability-gated device-clock scheduled-start primitive once the required group is ready.
+
+The diagnostic records:
+
+- capture count and pre-pause/post-rewind offsets;
+- scheduled target device-clock timestamp;
+- OpenAL error/call duration;
+- source state and relative sample-offset spread while still before the target, near the target, after the target, and later in playback;
+- current device clock and target-minus-current-clock delta;
+- natural/explicit cleanup.
+
+The diagnostic command is an EXP-003 implementation hook only. It does **not** make scheduled playback the default and does not define the production Lua API.
+
+## Semantics carried forward
 
 - A normal one-speaker SFX remains `immediate` and gets no artificial synchronization delay.
 - A one-member `together` group should collapse to `immediate` because there is nothing local to synchronize against.
 - A one-member `scheduled` request remains meaningful if it targets a session/external timeline.
 - Scheduled lead time is adaptive; 100 ms is an example safety budget, not a fixed requirement.
+- If a silent preparation preroll is used, a public/session target time must describe **audible media sample zero**, not the beginning of the silent preroll. The renderer must compensate for any preroll internally.
 - If precise scheduled timing is requested but timed-start capability is unavailable, HighAudio should report that precise scheduling is unavailable rather than silently claiming B met a timestamp guarantee. A future public API may allow explicit fallback.
 - Initial start synchronization does not solve later streaming underruns/drift. Ongoing timeline/drift handling remains later work.
+
+## Minimum-manual-testing rule
+
+No standalone user launch is justified merely to re-check C capability. Scheduled playback should be folded into a later consolidated M3 runtime gate only if real-device behavior remains architecture-blocking after automatic validation. A standalone capability-discovery launch is explicitly disallowed by `docs/TESTING.md`'s minimum-manual-testing policy.
