@@ -7,6 +7,9 @@ on:
       - 'build.gradle'
       - 'settings.gradle'
       - 'gradle.properties'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - 'gradle/wrapper/**'
       - '.github/workflows/build.yml'
   pull_request:
     paths:
@@ -14,6 +17,9 @@ on:
       - 'build.gradle'
       - 'settings.gradle'
       - 'gradle.properties'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - 'gradle/wrapper/**'
       - '.github/workflows/build.yml'
 
 jobs:
@@ -33,17 +39,51 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - name: Set up Gradle 9.2.1
+      - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "9.2.1"
+
+      - name: Verify Gradle wrapper
+        run: ./gradlew --no-daemon --version
 
       - name: Build against NeoForge ${{ matrix.neoforge }}
-        run: gradle --no-daemon -Pneo_version=${{ matrix.neoforge }} build
+        run: ./gradlew --no-daemon -Pneo_version=${{ matrix.neoforge }} build
+
+      - name: Verify packaged mod metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          jar_path="$(find build/libs -maxdepth 1 -type f -name 'cctweakedhighaudio-*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' -print -quit)"
+          if [[ -z "$jar_path" ]]; then
+            echo "No built HighAudio JAR found"
+            exit 1
+          fi
+
+          metadata="$(unzip -p "$jar_path" META-INF/neoforge.mods.toml)"
+          if [[ -z "$metadata" ]]; then
+            echo "Packaged META-INF/neoforge.mods.toml is missing or empty"
+            exit 1
+          fi
+
+          if grep -Eq '\$\{[^}]+\}' <<<"$metadata"; then
+            echo "Unexpanded placeholder found in packaged neoforge.mods.toml"
+            exit 1
+          fi
+
+          grep -Fq 'modId="cctweakedhighaudio"' <<<"$metadata"
+          grep -Fq 'modId="computercraft"' <<<"$metadata"
+          grep -Fq 'versionRange="[1.120.0]"' <<<"$metadata"
+          grep -Fq 'versionRange="[1.21.1]"' <<<"$metadata"
+          grep -Fq 'versionRange="[21.1.247,21.2)"' <<<"$metadata"
+
+          jar_entries="$(unzip -Z1 "$jar_path")"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/HighAudio.class' <<<"$jar_entries"
+
+          echo "Verified packaged metadata and HighAudio entrypoint in $jar_path"
 
       - name: Upload JAR
         uses: actions/upload-artifact@v4
         with:
           name: cctweakedhighaudio-neoforge-${{ matrix.neoforge }}
-          path: build/libs/*.jar
+          path: build/libs/cctweakedhighaudio-*.jar
           if-no-files-found: error
