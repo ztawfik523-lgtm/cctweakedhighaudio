@@ -1,6 +1,9 @@
 package dev.ztawfik.cctweakedhighaudio;
 
 import com.mojang.logging.LogUtils;
+import dan200.computercraft.api.ComputerCraftAPI;
+import dev.ztawfik.cctweakedhighaudio.integration.cct.GenericSourceSelfCheck;
+import dev.ztawfik.cctweakedhighaudio.integration.cct.SpeakerGenericSource;
 import net.neoforged.fml.common.Mod;
 import org.slf4j.Logger;
 
@@ -10,6 +13,13 @@ public final class HighAudio {
     public static final Logger LOGGER = LogUtils.getLogger();
 
     public HighAudio() {
-        LOGGER.info("CC:Tweaked HighAudio bootstrap loaded");
+        LOGGER.info("CC:Tweaked HighAudio bootstrap loading EXP-001 GenericSource comparison");
+
+        var source = new SpeakerGenericSource();
+        GenericSourceSelfCheck.verify(source);
+        ComputerCraftAPI.registerGenericSource(source);
+
+        LOGGER.info("[EXP-001-GENERIC] GenericSource registered id={}", source.id());
+        LOGGER.info("CC:Tweaked HighAudio bootstrap loaded EXP-001 GenericSource comparison");
     }
 }
