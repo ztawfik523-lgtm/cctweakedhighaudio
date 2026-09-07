@@ -126,7 +126,7 @@ Sources:
 - https://github.com/SpongePowered/Mixin/blob/master/src/main/java/org/spongepowered/asm/mixin/transformer/MixinApplicatorStandard.java
 - https://github.com/SpongePowered/Mixin/blob/master/src/main/java/org/spongepowered/asm/util/Annotations.java
 
-**Implication:** the proposed additive `@LuaFunction` Mixin is technically plausible. Exact CC:T + NeoForge runtime validation remains `EXP-001`; this fact does not replace the experiment.
+**Implication:** the proposed additive `@LuaFunction` Mixin was technically plausible. EXP-001 ultimately accepted the less invasive targeted GenericSource instead.
 
 ## NeoForge
 
@@ -146,15 +146,18 @@ Evidence: CC:T peripheral execution model in `IPeripheral`/Lua APIs plus NeoForg
 
 **Implication:** NeoForge's <32 KiB serverbound payload ceiling does not define the low-level Lua→Java upload chunk size, though Lua/computer memory and call overhead still do.
 
-### FACT-NF-003 — client sound events exist [VERIFIED API concept]
+### FACT-NF-003 — client sound events exist and work on the target line [VERIFIED source + exact runtime]
 
-NeoForge 1.21.x exposes `PlaySoundEvent`, `PlaySoundSourceEvent`, `PlayStreamingSourceEvent`, and `SoundEngineLoadEvent`. `PlayStreamingSourceEvent` is fired when a streaming sound is being played and provides source-event context including the Minecraft audio channel. `SoundEngineLoadEvent` fires when the sound engine is constructed/reloaded, including output-device changes.
+NeoForge 1.21.x exposes `PlaySoundEvent`, `PlaySoundSourceEvent`, `PlayStreamingSourceEvent`, and `SoundEngineLoadEvent`. `PlayStreamingSourceEvent` provides the Minecraft audio `Channel` for a streaming sound, and the exact NeoForge 21.1.x patch posts it after the stream is attached and `channel.play()` has been invoked. `SoundEngineLoadEvent` fires when the sound engine is constructed/reloaded.
 
 Reference Javadocs: https://nekoyue.github.io/ForgeJavaDocs-NG/javadoc/1.21.x-neoforge/net/neoforged/neoforge/client/event/sound/package-summary.html
 
-**Caveat:** this public Javadoc mirror is not specifically generated from NeoForge 21.1.247. `EXP-002` must compile/run the exact target builds.
+Exact project evidence:
 
-**Implication:** HighAudio should first try official sound events to capture/rebuild Minecraft-owned channels before adding broad SoundEngine Mixins.
+- EXP-002 compiled/packaged on NeoForge 21.1.247 and 21.1.248 and exercised both events on the real 21.1.247 client;
+- EXP-003 used `PlayStreamingSourceEvent` captures as real channel-allocation evidence.
+
+**Implication:** official NeoForge sound events are a proven usable observation/lifecycle boundary for the target project line; broad SoundEngine control Mixins are not required merely to discover a created streaming channel.
 
 ### FACT-NF-004 — CC:T 1.120.0 was built against an older NeoForge [VERIFIED]
 
@@ -174,13 +177,44 @@ Source: https://github.com/cc-tweaked/CC-Tweaked/blob/v1.21.1-1.120.0/projects/c
 
 **Implication:** HighAudio can preserve Minecraft category/position lifecycle while replacing DFPWM with higher-quality PCM.
 
-### FACT-MC-002 — Minecraft has distinct static and streaming channel pools [VERIFIED concept]
+### FACT-MC-002 — Minecraft has distinct static and streaming channel pools [VERIFIED source/mappings + runtime]
 
-Minecraft's `Library` manages distinct static and streaming channel pools.
+Minecraft 1.21.1 `com.mojang.blaze3d.audio.Library` owns distinct `staticChannels` and `streamingChannels` pools and selects a pool when acquiring a channel.
 
 Reference mapping/source research: Minecraft 1.21.1 `com.mojang.blaze3d.audio.Library`.
 
-**Implication:** raw OpenAL hardware source count is not by itself the HighAudio source budget. `EXP-003` must measure actual streaming/static acquisition behavior on the target runtime.
+EXP-003 runtime evidence independently exposed the two counters through Minecraft's own debug string, including `... + 8/8` on the streaming side while a much larger static-side reservation remained available.
+
+**Implication:** raw OpenAL hardware source count is not by itself the HighAudio streaming budget. Minecraft's own pool policy is an architecturally relevant capacity boundary.
+
+### FACT-MC-003 — one positional OpenAL-style emitter should be mono [VERIFIED platform behavior]
+
+Minecraft/NeoForge sound documentation describes stereo sounds as non-positional/listener-relative; positional attenuation behavior is intended for mono sound data.
+
+Reference: https://docs.neoforged.net/docs/resources/client/sounds/
+
+**Implication:** HighAudio should downmix stereo/multichannel input to mono for a single physical positional speaker unless an explicit multi-emitter stereo feature is designed.
+
+### FACT-MC-004 — vanilla streaming reservation measured at 8 on the baseline runtime [VERIFIED exact runtime]
+
+On the exact EXP-003 Part A client run (Minecraft 1.21.1 / Java 21.0.7 / NeoForge 21.1.247 / CC:T 1.120.0 / SPR absent), requested HighAudio streaming counts behaved as follows:
+
+```text
+1  -> 1
+2  -> 2
+4  -> 4
+6  -> 6
+8  -> 8
+10 -> 8
+12 -> 8
+16 -> 8
+```
+
+Minecraft's own debug string reached `... + 8/8`; requests above eight produced no ninth unique `PlayStreamingSourceEvent` capture and stayed at eight active sounds. Cleanup/finalization remained clean.
+
+Evidence: `docs/test-batches/evidence/TEST-BATCH-003-NEOFORGE-21.1.247.md`.
+
+**Implication:** unmodified Minecraft-owned streaming on the tested runtime does not meet the project's 16-source stress target. This fact does **not** claim the OpenAL device itself has an eight-source limit, and it does not yet prove that a rebalanced reservation can supply 16.
 
 ### FACT-AL-001 — OpenAL supports vector source start/pause [VERIFIED]
 
@@ -209,16 +243,6 @@ Source: https://github.com/kcat/openal-soft/blob/master/examples/alffplay.cpp
 
 **Implication:** synchronization/drift logic must not equate one raw OpenAL offset query with perfect audible global time.
 
-## Spatial audio
-
-### FACT-MC-003 — one positional OpenAL-style emitter should be mono [VERIFIED platform behavior]
-
-Minecraft/NeoForge sound documentation describes stereo sounds as non-positional/listener-relative; positional attenuation behavior is intended for mono sound data.
-
-Reference: https://docs.neoforged.net/docs/resources/client/sounds/
-
-**Implication:** HighAudio should downmix stereo/multichannel input to mono for a single physical positional speaker unless an explicit multi-emitter stereo feature is designed.
-
 ## Sound Physics Remastered
 
 ### FACT-SPR-001 — SPR repository license [VERIFIED]
@@ -236,6 +260,19 @@ SPR has user reports of substantial performance degradation with many simultaneo
 Issue tracker: https://github.com/henkelmax/sound-physics-remastered/issues
 
 **Implication:** source-count defaults must be measured with acoustics enabled, not derived solely from OpenAL capacity.
+
+### FACT-SPR-003 — exact 1.21.1 SPR integrates through Minecraft Library/SoundEngine/Channel [VERIFIED source]
+
+At SPR's 1.21.1 update commit `eac8b7d0a1aa7df111e2637180482dba3425dccb`:
+
+- `LibraryMixin` transforms Minecraft `Library.init(...)` to request OpenAL auxiliary sends when creating the context;
+- `ChannelAccessor` exposes the underlying source id from Minecraft's `Channel`;
+- `SourceMixin` injects into Minecraft `Channel.play()` and applies Sound Physics processing to that Minecraft-owned source;
+- `SoundSystemMixin` integrates through Minecraft `SoundEngine`/channel handles for sound metadata and moving-source updates.
+
+Source: exact files under `henkelmax/sound-physics-remastered` at the commit above.
+
+**Implication:** retaining Minecraft-owned channels preserves the normal integration surface SPR already observes. This makes Minecraft-owned pool rebalancing a lower-compatibility-risk candidate than independent HighAudio raw-source ownership, but combined HighAudio+SPR runtime compatibility still requires explicit testing.
 
 ## Codec facts
 
@@ -260,8 +297,8 @@ Reference: https://javadoc.lwjgl.org/org/lwjgl/stb/STBVorbis.html
 The following are **not verified facts** and must not appear elsewhere as if they were:
 
 - HighAudio can definitely support 32 active sources.
-- 16 simultaneous long streaming speakers are guaranteed by Minecraft.
-- the proposed `SpeakerPeripheral` Mixin works in the assembled target mod.
+- 16 simultaneous long streaming speakers are guaranteed by Minecraft or by the proposed reservation rebalance.
+- the proposed EXP-003 reservation Mixin is compatible with SPR until the combined runtime gate passes.
 - `PlayStreamingSourceEvent` alone gives every low-level OpenAL control we need on 21.1.247/248.
 - `alSourcePlayv` can be used after Minecraft/SPR setup with zero escaped samples and no lifecycle side effects.
 - server real-time playback should or should not advance while the integrated game is paused.
