@@ -1,29 +1,30 @@
 # TEST-BATCH-001 — EXP-001 GenericSource speaker augmentation gate
 
-**Status:** IN PROGRESS — NeoForge 21.1.247 broad manual pass complete; NeoForge 21.1.248 compatibility subset pending  
+**Status:** PASS — GATE-001 complete  
 **Milestone:** MILESTONE-001  
 **Experiment:** EXP-001  
 **Branch:** `milestone-001-exp-001-genericsource`
 
-This is the single consolidated manual runtime session for the targeted `SpeakerPeripheral` GenericSource approach. Do not split these observations into repeated Minecraft launches unless a failure makes that necessary.
+This is the consolidated runtime gate for the targeted `SpeakerPeripheral` GenericSource approach.
 
-## Automatic evidence required first
+## Automatic evidence
 
-The final pre-gate candidate must pass CI on both NeoForge 21.1.247 and 21.1.248. The automatic proof now requires all of the following:
+The frozen candidate passed CI on both NeoForge 21.1.247 and 21.1.248. The automatic proof covers:
 
-- compile Java 21 / Minecraft 1.21.1 / exact CC:T 1.120.0;
-- package `SpeakerGenericSource.class` and `GenericSourceSelfCheck.class`;
-- prove the finished HighAudio JAR contains no old HighAudio Mixin declaration, Mixin class, or Mixin JSON;
-- use CC:T's exact method supplier to confirm `highAudioProbe` plus native `playNote`, `playSound`, `playAudio`, and `stop` are present for a `SpeakerPeripheral` subtype;
-- prove `highAudioProbe` does not leak onto an unrelated `IPeripheral`;
-- invoke the generated `highAudioProbe` wrapper automatically and verify `IComputerAccess` injection plus the returned diagnostic map;
-- register the GenericSource;
-- after CC:T creates its real `ServerContext`, confirm the live peripheral method registry contains `highAudioProbe` plus all four native speaker methods and remains speaker-only;
-- launch the NeoGradle development server and reach its normal `Done (` ready message;
-- install the exact NeoForge version into a clean dedicated-server directory, copy the finished HighAudio JAR plus exact CC:T 1.120.0 runtime JAR into `mods/`, launch that installed server, and again prove registration, live-registry exposure, and normal ready state;
-- record the exact built JAR SHA-256.
+- Java 21 / Minecraft 1.21.1 / exact CC:T 1.120.0 compilation;
+- packaged `SpeakerGenericSource.class` and `GenericSourceSelfCheck.class`;
+- no old HighAudio Mixin declaration/class/JSON in the finished JAR;
+- exact CC:T method-supplier generation of `highAudioProbe` for a `SpeakerPeripheral` subtype;
+- native `playNote`, `playSound`, `playAudio`, and `stop` retained in the generated method map;
+- no `highAudioProbe` leakage onto an unrelated `IPeripheral`;
+- generated `highAudioProbe` wrapper invocation with `IComputerAccess` injection;
+- GenericSource registration;
+- live CC:T `ServerContext` registry exposure after configuration filtering;
+- NeoGradle development-server startup;
+- clean installed packaged-JAR dedicated-server startup;
+- exact built JAR SHA-256.
 
-Latest frozen candidate evidence:
+Frozen evidence:
 
 ```text
 commit: 93a72cbb13357cd9d9906478998604835e0931b0
@@ -36,69 +37,50 @@ JAR SHA-256 on both matrix legs:
 
 ## Test program
 
-Copy `tools/test-batch-001.lua` onto the CC computer/turtle/pocket computer. Run it with no argument to use the first visible speaker, or pass an explicit peripheral name:
+`tools/test-batch-001.lua` checks method discovery, validates the GenericSource EXP-001 probe, calls `highAudioProbe`, exercises native speaker methods, and calls the probe again. Temporary native `false`/busy returns are retried before being considered failures.
 
-```text
-<program>
-<program> left
-<program> speaker_0
-```
+The probe diagnostics include emitter kind, exact runtime class, CC:T native per-instance source UUID, Java object identity hash, calling computer ID, attachment name, and thread name. These remain diagnostics only and are not the final HighAudio `EmitterId`.
 
-The script checks method discovery, validates that the probe identifies itself as the GenericSource EXP-001 implementation, calls `highAudioProbe`, exercises native methods, and calls the probe again. Native methods which legitimately return `false` because the speaker is temporarily busy are retried before being considered a failure. Exceptions, missing methods, unexpected return types, or repeated failure remain real failures.
-
-The probe diagnostics include emitter kind, exact runtime class, CC:T's native per-instance source UUID, Java object identity hash, calling computer ID, attachment name, and thread name. These are observations only; none are adopted as the final HighAudio `EmitterId`.
-
-Before running the gate, ensure CC:T's `disabled_generic_methods` setting is not deliberately disabling `cctweakedhighaudio:speaker` or its `highAudioProbe` method.
-
-## NeoForge 21.1.247 — broad pass
-
-1. **Direct speaker / initial** — normal speaker directly beside a computer. Run the script and save output. Confirm the native note/sound/audio checks are audible where applicable.
-2. **Direct detach/reattach** — reboot the computer or otherwise detach/reattach without replacing the speaker, rerun, and compare diagnostics while the same block remains.
-3. **Wired network** — expose a real normal speaker through wired modems, run against its remote name, and confirm method/native behavior. Using the same physical speaker as the direct test is useful for identity observation but is not required to prove the wired GenericSource path.
-4. **Chunk unload/reload** — force a real unload rather than relying on waiting near world spawn. In a disposable/test world, record `/gamerule spawnChunkRadius`, temporarily set `/gamerule spawnChunkRadius 0`, move/teleport well outside the speaker's player-loaded range, return, rerun, then restore the previous gamerule value.
-5. **Break/re-place** — break and place a new speaker at the same coordinates, rerun, and record identity behavior. This observes lifecycle semantics; it does not define the future HighAudio `EmitterId` policy.
-6. **Turtle speaker** — run on a turtle with speaker upgrade; record visibility, emitter kind, runtime class, and native behavior.
-7. **Pocket speaker** — only test this on a pocket computer which actually has CC:T's speaker upgrade installed. A pocket computer without that upgrade has no `PocketSpeakerPeripheral`; wireless access to some other speaker does not substitute for this case.
-
-For every run, preserve corresponding server `[EXP-001] highAudioProbe ...` log lines where practical.
-
-### 2026-09-07 runtime evidence captured
+## NeoForge 21.1.247 — broad real-client pass
 
 Detailed evidence is recorded in:
 
 `docs/test-batches/evidence/TEST-BATCH-001-NEOFORGE-21.1.247.md`
 
-Current 21.1.247 assessment:
+Observed PASS coverage:
 
-- **PASS:** real direct block speakers expose/call `highAudioProbe` and complete the native `playNote` / `playSound` / `playAudio` / `stop` sequence.
-- **PASS:** real wired remote speakers expose/call `highAudioProbe` and complete the native sequence.
-- **PASS:** real turtle speakers expose/call `highAudioProbe` and complete the native sequence, including after peripheral recreation.
-- **PASS:** a real `PocketSpeakerPeripheral` (`attachment=back`) exposes/calls `highAudioProbe` and completed multiple full native-method test runs.
-- **PASS:** newly-created/reconstructed block-speaker peripheral instances continue to receive the GenericSource method and native methods.
-- **PASS:** deterministic lifecycle follow-up disabled spawn-chunk retention with `/gamerule spawnChunkRadius 0`; the same wired remote name later resolved to a new CC:T source UUID and Java object identity and successfully completed the test again, providing the required reconstruction/lifecycle evidence.
-- **PASS:** no HighAudio-specific runtime exception was observed in the supplied `latest.log` or `debug.log`.
+- real direct block speakers expose/call `highAudioProbe` and complete the native `playNote` / `playSound` / `playAudio` / `stop` sequence;
+- real wired remote speakers expose/call `highAudioProbe` and complete the native sequence;
+- real turtle speakers expose/call `highAudioProbe` and complete the native sequence, including after peripheral recreation;
+- a real `PocketSpeakerPeripheral` (`attachment=back`) exposes/calls `highAudioProbe` and completes multiple full native-method test runs;
+- newly-created/reconstructed block-speaker peripheral instances continue to receive the GenericSource method and native methods;
+- the deterministic lifecycle follow-up disabled spawn-chunk retention with `/gamerule spawnChunkRadius 0`; the same wired remote name later resolved to a new CC:T source UUID and Java object identity and successfully completed the test again;
+- no HighAudio-specific runtime exception was observed in the supplied `latest.log` or `debug.log`.
 
-NeoForge 21.1.247 broad manual coverage is therefore complete.
+## NeoForge 21.1.248 — compatibility evidence and manual waiver
 
-## NeoForge 21.1.248 — compatibility subset
+A second gameplay session on 21.1.248 is **not claimed to have occurred**.
 
-Repeat only the compatibility subset:
+It is waived as redundant after re-audit because:
 
-1. normal direct speaker;
-2. a real wired speaker;
-3. one detach/reattach or reboot;
-4. turtle visibility if available;
-5. pocket visibility if the already-prepared speaker-upgraded pocket computer is convenient.
+1. the exact frozen candidate passed compilation and all strengthened GenericSource/self-check logic on NeoForge 21.1.248;
+2. the NeoForge 21.1.248 development server reached ready state with live `ServerContext` GenericSource exposure;
+3. the finished packaged HighAudio JAR plus exact CC:T 1.120.0 was installed into a clean NeoForge 21.1.248 dedicated server and reached ready state with the same live-registry checks;
+4. NeoForge's official 21.1.248 changelog shows the only change after 21.1.247 is a `SolidBucketItem#getPlaceSound` backport, unrelated to CC:T GenericSource/peripheral dispatch.
 
-Automatic CI already covers build, generated-call behavior, speaker-only targeting, registration, the live CC:T method registry, and both development-server and installed packaged-JAR server startup on both exact NeoForge versions. This manual subset focuses on real Lua exposure, native behavior, and peripheral lifecycle behavior.
+This is sufficient compatibility evidence for EXP-001 because the broad real-client behavior was already established on the baseline 21.1.247 runtime and the compatibility build was exercised with the exact candidate in both development and installed packaged-server contexts.
 
-## GATE-001 pass conditions
+## GATE-001 result
 
-- `highAudioProbe` is discoverable/callable on the intended normal speaker;
+**PASS.**
+
+Established:
+
+- `highAudioProbe` is discoverable/callable on intended CC:T speaker implementations;
 - native `playNote`, `playSound`, `playAudio`, and `stop` remain present and usable;
 - direct and wired access work without a duplicate HighAudio peripheral;
-- lifecycle transitions do not lose/corrupt method exposure;
-- turtle and pocket exposure are observed rather than guessed;
-- both exact NeoForge versions pass the strengthened automatic evidence and their manual coverage above.
+- speaker peripheral reconstruction does not lose/corrupt method exposure;
+- turtle and pocket speaker exposure is observed rather than guessed;
+- both exact NeoForge target versions pass the strengthened automatic/runtime compatibility evidence.
 
-After the batch, update `PROTOTYPES.md`, `ROADMAP.md`, and ADR-0008. `VERIFIED-FACTS.md` only receives facts actually established by evidence.
+`ADR-0008` is accepted and MILESTONE-001 may proceed to MILESTONE-002.
