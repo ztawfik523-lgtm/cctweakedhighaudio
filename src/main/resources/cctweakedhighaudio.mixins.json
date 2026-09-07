@@ -6,7 +6,9 @@
   "client": [
     "LibraryStreamingReservationMixin",
     "ChannelSourceAccessor",
-    "SoundEngineExecutorAccessor"
+    "SoundEngineExecutorAccessor",
+    "SoundEngineLibraryAccessor",
+    "LibraryDeviceAccessor"
   ],
   "injectors": {
     "defaultRequire": 1
