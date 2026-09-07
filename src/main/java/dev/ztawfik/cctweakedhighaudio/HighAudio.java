@@ -17,7 +17,7 @@ public final class HighAudio {
     private final SpeakerGenericSource speakerSource = new SpeakerGenericSource();
 
     public HighAudio() {
-        LOGGER.info("CC:Tweaked HighAudio bootstrap loading MILESTONE-002 / EXP-002 Minecraft-owned PCM probe");
+        LOGGER.info("CC:Tweaked HighAudio bootstrap loading MILESTONE-003 / EXP-003 capacity and synchronization probe");
 
         // Keep the accepted MILESTONE-001 integration guarded while later milestones build on top of it.
         GenericSourceSelfCheck.verify(speakerSource);
@@ -25,7 +25,7 @@ public final class HighAudio {
         NeoForge.EVENT_BUS.addListener(this::onServerStarted);
 
         LOGGER.info("[EXP-001] GenericSource registered id={}", speakerSource.id());
-        LOGGER.info("CC:Tweaked HighAudio bootstrap loaded MILESTONE-002 / EXP-002 Minecraft-owned PCM probe");
+        LOGGER.info("CC:Tweaked HighAudio bootstrap loaded MILESTONE-003 / EXP-003 capacity and synchronization probe");
     }
 
     private void onServerStarted(ServerStartedEvent event) {
