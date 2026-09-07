@@ -44,8 +44,8 @@ configurations {
 dependencies {
     implementation "net.neoforged:neoforge:${neo_version}"
 
-    // CC:Tweaked's public API at compile time, exact runtime mod in dev runs.
-    compileOnly "cc.tweaked:cc-tweaked-${minecraft_version}-core-api:${cct_version}"
+    // CC:Tweaked 1.120.0 public API coordinates from the pinned release README.
+    compileOnly "cc.tweaked:cc-tweaked-${minecraft_version}-common-api:${cct_version}"
     compileOnly "cc.tweaked:cc-tweaked-${minecraft_version}-forge-api:${cct_version}"
     localRuntime "cc.tweaked:cc-tweaked-${minecraft_version}-forge:${cct_version}"
 }
