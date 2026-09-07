@@ -49,9 +49,9 @@ nativeSource=b78b3e18-8c51-47df-a3f7-134febca537d
 identityHash=0x47da06bd
 ```
 
-This proves HighAudio's GenericSource method is callable through CC:T's wired peripheral path and the native speaker sequence remains usable there.
+The user later clarified that this was deliberately a different placed speaker from the earlier direct `right` speaker. Therefore the differing identity is expected and is not evidence of identity churn or a wired-path defect.
 
-The wired speaker's source/object identity differs from the earlier direct `right` speaker. The logs alone do not prove whether this was the same physical speaker re-exposed through a modem or a second speaker. Therefore the exact "same physical speaker direct vs wired" identity check remains pending.
+This runtime evidence proves a real normal speaker works through direct attachment and a real normal speaker works through CC:T's wired peripheral path. Combined with the source/automatic proof that HighAudio registers a GenericSource rather than replacing/wrapping the peripheral, a same-physical-block direct-vs-wired identity comparison is not currently treated as a defect in this evidence set.
 
 ### Turtle speaker
 
@@ -89,17 +89,23 @@ This proves a newly-created block speaker peripheral also receives the GenericSo
 
 The user logged `moving away` and later `going back`, and reduced view/simulation distance during the interval. However the post-return direct speaker retained the exact same Java object identity (`0x59ebfe48`) and native source UUID as before. That is not sufficient evidence that the speaker chunk actually unloaded and reconstructed its block entity/peripheral.
 
-Treat the chunk unload/reload item as **pending**, not passed.
+The test setup was also near world-spawn coordinates. Minecraft 1.21.1 has the vanilla `spawnChunkRadius` gamerule and keeps the configured spawn area loaded; this can explain why simply moving away did not unload the speaker chunk.
 
-### Same physical speaker direct vs wired
+For a deterministic manual retest in a disposable/test world:
 
-Direct `right` used source `eef8586b-...` / identity `0x59ebfe48`, while wired `speaker_27` used source `b78b3e18-...` / identity `0x47da06bd`. This is consistent with two different speaker peripheral instances. The logs do not establish that one physical speaker was observed through both attachment paths.
+1. record the current value with `/gamerule spawnChunkRadius`;
+2. temporarily run `/gamerule spawnChunkRadius 0`;
+3. move/teleport far enough away that the speaker is well outside player simulation/view distance;
+4. return and rerun the Lua test;
+5. restore the previous `spawnChunkRadius` value.
 
-Treat the direct-vs-wired same-speaker identity item as **pending**, while wired method exposure itself is **passed**.
+Treat the exact chunk unload/reload item as **pending** until that deterministic test or equivalent evidence is captured.
 
 ### Pocket speaker
 
-The logs contain a user marker for `pocket computer` followed by `no speaker obv`, but no HighAudio probe from a pocket speaker peripheral. Pocket-speaker runtime exposure is therefore **not tested** in this evidence set.
+The user clarified that the pocket computer used in this session did not have CC:T's speaker upgrade installed. Therefore no `PocketSpeakerPeripheral` existed to test. Connecting that pocket computer wirelessly to some other computer/speaker would test networking or another speaker peripheral, not the pocket speaker implementation itself.
+
+Pocket-speaker runtime exposure remains **not tested / not available in this setup**. The TEST-BATCH procedure already marks this case as `if practical`; whether GATE-001 requires obtaining a speaker-upgraded pocket computer should be an explicit gate-scope decision rather than inferred from this failed attempt.
 
 ### NeoForge 21.1.248 manual subset
 
@@ -120,4 +126,4 @@ NeoForge 21.1.247 has strong runtime evidence for:
 - GenericSource exposure on newly-created block/turtle speaker peripheral instances;
 - no observed HighAudio runtime exception in the supplied session.
 
-GATE-001 remains **IN PROGRESS** because chunk unload/reload, same-physical-speaker direct/wired comparison, pocket exposure, and the NeoForge 21.1.248 manual subset are not yet proven by these logs.
+GATE-001 remains **IN PROGRESS** because the deterministic chunk-unload observation, the explicit pocket-test scope decision, and the NeoForge 21.1.248 manual subset remain unresolved.
