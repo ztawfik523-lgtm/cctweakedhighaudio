@@ -16,7 +16,7 @@ public final class GeneratedPcmStream implements AudioStream {
     public static final int SAMPLE_RATE = 48_000;
     public static final int CHANNELS = 1;
     public static final int BITS_PER_SAMPLE = 16;
-    public static final int DURATION_FRAMES = SAMPLE_RATE * 2;
+    public static final int DURATION_FRAMES = SAMPLE_RATE * 8;
 
     private static final AudioFormat FORMAT = new AudioFormat(SAMPLE_RATE, BITS_PER_SAMPLE, CHANNELS, true, false);
     private static final double START_HZ = 220.0;
