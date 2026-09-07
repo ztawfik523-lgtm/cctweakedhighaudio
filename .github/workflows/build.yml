@@ -4,6 +4,8 @@ on:
   push:
     paths:
       - 'src/**'
+      - 'tools/**'
+      - 'docs/test-batches/**'
       - 'build.gradle'
       - 'settings.gradle'
       - 'gradle.properties'
@@ -15,6 +17,8 @@ on:
   pull_request:
     paths:
       - 'src/**'
+      - 'tools/**'
+      - 'docs/test-batches/**'
       - 'build.gradle'
       - 'settings.gradle'
       - 'gradle.properties'
@@ -54,7 +58,7 @@ jobs:
       - name: Build against NeoForge ${{ matrix.neoforge }}
         run: ./gradlew --no-daemon -Pneo_version=${{ matrix.neoforge }} build
 
-      - name: Verify packaged mod metadata and EXP-001 GenericSource classes
+      - name: Verify packaged mod metadata and clean EXP-001 GenericSource implementation
         shell: bash
         run: |
           set -euo pipefail
@@ -82,13 +86,27 @@ jobs:
           grep -Fq 'versionRange="[1.21.1]"' <<<"$metadata"
           grep -Fq 'versionRange="[21.1.247,21.2)"' <<<"$metadata"
 
+          if grep -Fq '[[mixins]]' <<<"$metadata"; then
+            echo "Unexpected Mixin declaration found in clean GenericSource build"
+            exit 1
+          fi
+
           jar_entries="$(unzip -Z1 "$jar_path")"
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/HighAudio.class' <<<"$jar_entries"
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/integration/cct/SpeakerGenericSource.class' <<<"$jar_entries"
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/integration/cct/GenericSourceSelfCheck.class' <<<"$jar_entries"
 
+          if grep -Fq 'SpeakerPeripheralMixin.class' <<<"$jar_entries"; then
+            echo "Unexpected old SpeakerPeripheralMixin.class found in clean GenericSource build"
+            exit 1
+          fi
+          if grep -Fq 'cctweakedhighaudio.mixins.json' <<<"$jar_entries"; then
+            echo "Unexpected old HighAudio Mixin config found in clean GenericSource build"
+            exit 1
+          fi
+
           sha256sum "$jar_path" | tee build/exp-001-jar-sha256.txt
-          echo "Verified packaged EXP-001 GenericSource implementation in $jar_path"
+          echo "Verified clean packaged EXP-001 GenericSource implementation in $jar_path"
 
       - name: EXP-001 GenericSource dedicated-server smoke on NeoForge ${{ matrix.neoforge }}
         shell: bash
