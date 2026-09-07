@@ -5,69 +5,107 @@
 **Last reviewed:** 2026-09-07  
 **Search tags:** `EXP`, `PROTOTYPE`, `PASS-FAIL`, `RUNTIME-EVIDENCE`
 
-An entry stays `NOT RUN` until the exact experiment is executed and its evidence is preserved. A research conclusion is not a completed experiment.
+An entry stays `NOT RUN` until the exact experiment is executed and its evidence is preserved. A research conclusion or partial automatic proof is not a completed experiment.
 
 ---
 
-## EXP-001 — additive SpeakerPeripheral Mixin
+## EXP-001 — targeted SpeakerPeripheral GenericSource
 
-**Status:** `NOT RUN`  
-**Related decisions:** `ADR-0003`  
-**Risks:** `RISK-001`, `RISK-002`
+**Status:** `NOT RUN` — automatic pre-gate evidence PASS; consolidated manual runtime gate pending  
+**Related decisions:** `ADR-0008` (current), `ADR-0003` (superseded fallback)  
+**Risks:** `RISK-001`, `RISK-002`, `RISK-021`
 
 ### Question
 
-Can an additive Mixin into exact CC:T 1.120.0 `SpeakerPeripheral` expose new public `@LuaFunction` methods while preserving all native peripheral identity/lifecycle/method behavior?
+Can a registered CC:T `GenericSource` targeted at exact CC:T 1.120.0 `SpeakerPeripheral` expose a new HighAudio Lua method on the normal speaker while preserving native peripheral identity, lifecycle, native methods, and direct/wired behavior?
+
+### Candidate history
+
+EXP-001 originally evaluated a minimal additive Mixin. That candidate passed automatic build/startup checks on both target NeoForge versions, but before the manual gate the exact CC:T 1.120.0 generic-method path was re-evaluated.
+
+A less invasive candidate was found: `ComputerCraftAPI.registerGenericSource` plus a generic method whose first target parameter is the exact internal `SpeakerPeripheral` class. This preserves the original CC:T peripheral object and does not transform CC:T bytecode.
+
+`ADR-0003` is therefore superseded by proposed `ADR-0008`. The Mixin remains the first fallback if this candidate fails.
 
 ### Smallest implementation
 
-- minimal NeoForge mod scaffold;
-- exact CC:T 1.120.0 dependency;
-- one additive Mixin;
-- one method such as `highAudioProbe()`;
-- no audio engine, no content store, no custom packets beyond diagnostics if avoidable.
+- exact target stack only;
+- one `SpeakerGenericSource` under `integration/cct`;
+- one diagnostic `highAudioProbe()` method;
+- one startup method-supplier self-check;
+- no Mixin;
+- no audio engine, content store, packets, codec, upload, session, sync, SPR, URL, or VS2 work.
+
+### Automatic pre-gate evidence already obtained
+
+A separate comparison branch established that the GenericSource candidate can:
+
+- compile against exact CC:T 1.120.0;
+- be processed by CC:T's exact generic/peripheral method supplier;
+- contribute `highAudioProbe` to a `SpeakerPeripheral` subtype;
+- retain native `playNote`, `playSound`, `playAudio`, and `stop` in the generated method map;
+- register before server context startup;
+- reach dedicated-server ready state on NeoForge 21.1.247 and 21.1.248.
+
+Comparison evidence:
+
+```text
+branch: exp-001-genericsource-comparison
+commit: ecacab361416c0bbdbd1bd789806f567317773db
+CI run: 34078670979
+JAR SHA-256:
+e9a82ee4f4403881c01c4901b2dff88d86fc16cafa882581430064f9c2f1471a
+```
+
+This evidence does **not** complete EXP-001 because real Lua visibility, direct/wired behavior, and lifecycle transitions still require the consolidated manual gate.
 
 ### Procedure
 
-1. Launch with NeoForge 21.1.247.
-2. Place normal speaker next to a computer.
-3. Inspect `peripheral.getMethods(side)` and call `highAudioProbe()`.
-4. Call native `playNote`, `playSound`, `playAudio`, `stop` before and after HighAudio method calls.
-5. Attach speaker through wired modem; repeat discovery/calls.
-6. Reboot computer; repeat.
-7. Unload/reload speaker chunk; repeat.
-8. Break/re-place speaker at same position; record method/peripheral identity behavior.
-9. Equip turtle speaker; inspect method visibility.
-10. Inspect pocket speaker method visibility if test setup supports it.
-11. Repeat entire critical subset on NeoForge 21.1.248.
+1. Use the clean MILESTONE-001 GenericSource branch and its green CI artifact.
+2. Launch NeoForge 21.1.247.
+3. Place normal speaker next to a computer.
+4. Inspect `peripheral.getMethods(side)` and call `highAudioProbe()`.
+5. Exercise native `playNote`, `playSound`, `playAudio`, and `stop`, allowing normal temporary CC:T busy returns to be retried.
+6. Attach the same speaker through wired modems; repeat discovery/calls and compare diagnostics.
+7. Reboot/detach/reattach; repeat.
+8. Unload/reload speaker chunk; repeat.
+9. Break/re-place speaker at the same position; record identity behavior without assuming coordinate identity.
+10. Equip turtle speaker; inspect method visibility/native behavior.
+11. Inspect pocket speaker visibility if practical in the same session.
+12. Repeat the critical subset on NeoForge 21.1.248.
 
 ### Pass criteria
 
-- HighAudio method is visible/callable on intended speaker class(es).
-- No native method disappears or changes dispatch.
-- No duplicate peripheral is exposed.
-- Wired/direct attachment remain stable.
-- No Mixin transform error on either NeoForge version.
-- Method annotations survive transformation in the assembled runtime.
+- `highAudioProbe` is visible/callable on the intended normal speaker.
+- Native `playNote`, `playSound`, `playAudio`, and `stop` remain present and usable.
+- No duplicate HighAudio peripheral is exposed.
+- Direct and wired attachment remain stable.
+- Lifecycle transitions do not corrupt method exposure.
+- Turtle/pocket exposure is observed rather than guessed.
+- GenericSource registration/method generation/startup succeeds on both target NeoForge versions.
 
 ### Fail criteria
 
 Any of:
 
-- method not discovered;
-- native method conflict;
-- duplicate/unstable peripheral identity;
-- wired network behavior regresses;
-- transform fails on target stack;
-- additive method unintentionally breaks upgrade speakers in a way we cannot gate cleanly.
+- method not discovered/callable under normal default CC:T configuration;
+- native method conflict or broken dispatch;
+- duplicate/unstable peripheral caused by HighAudio;
+- wired behavior regresses;
+- lifecycle transition loses/corrupts method exposure;
+- exact target stack fails to register/start;
+- upgrade-speaker exposure cannot be gated/supported cleanly enough for the product direction.
+
+A deliberate `disabled_generic_methods` rule which disables `cctweakedhighaudio:speaker` is an administrator configuration condition, not by itself an implementation failure; it must still be documented if ADR-0008 is accepted.
 
 ### Evidence to preserve
 
 - exact mod/CC:T/NeoForge versions;
-- startup log with Mixin diagnostics;
-- Lua output for method lists/calls;
+- branch/commit and built JAR SHA-256;
+- CI startup/self-check logs;
+- Lua method lists/call output;
 - direct/wired/reload results table;
-- source commit/JAR SHA.
+- server `[EXP-001] highAudioProbe ...` lines.
 
 ### Result
 
