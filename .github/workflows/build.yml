@@ -58,7 +58,7 @@ jobs:
       - name: Build against NeoForge ${{ matrix.neoforge }}
         run: ./gradlew --no-daemon -Pneo_version=${{ matrix.neoforge }} build
 
-      - name: Verify packaged MILESTONE-002 candidate
+      - name: Verify packaged MILESTONE-003 candidate
         shell: bash
         run: |
           set -euo pipefail
@@ -107,7 +107,7 @@ jobs:
             exit 1
           fi
 
-          # MILESTONE-002 client probe must actually be packaged.
+          # Accepted MILESTONE-002 playback probe remains packaged as a regression fixture.
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp2/GeneratedPcmStream.class' <<<"$jar_entries"
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp2/GeneratedPcmSound.class' <<<"$jar_entries"
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp2/Exp2AudioController.class' <<<"$jar_entries"
@@ -115,8 +115,14 @@ jobs:
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp2/Exp2ClientModEvents.class' <<<"$jar_entries"
           grep -Fq 'assets/cctweakedhighaudio/sounds.json' <<<"$jar_entries"
 
-          sha256sum "$jar_path" | tee build/exp-002-jar-sha256.txt
-          echo "Verified packaged MILESTONE-002 EXP-002 candidate in $jar_path"
+          # MILESTONE-003 Part A capacity diagnostics must actually be packaged.
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/Exp3CapacitySound.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/Exp3CapacityController.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/Exp3ClientEvents.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/client/audio/exp3/Exp3ClientModEvents.class' <<<"$jar_entries"
+
+          sha256sum "$jar_path" | tee build/exp-003-jar-sha256.txt
+          echo "Verified packaged MILESTONE-003 EXP-003 candidate in $jar_path"
 
       - name: Accepted EXP-001 development-server regression smoke on NeoForge ${{ matrix.neoforge }}
         shell: bash
@@ -125,7 +131,7 @@ jobs:
 
           mkdir -p run/server
           printf 'eula=true\n' > run/server/eula.txt
-          log="build/exp-002-dev-server-${{ matrix.neoforge }}.log"
+          log="build/exp-003-dev-server-${{ matrix.neoforge }}.log"
 
           ./gradlew --no-daemon -Pneo_version=${{ matrix.neoforge }} runServer >"$log" 2>&1 &
           gradle_pid=$!
@@ -178,7 +184,7 @@ jobs:
 
           echo "Accepted EXP-001 development-server regression smoke passed on NeoForge ${{ matrix.neoforge }}"
 
-      - name: MILESTONE-002 packaged-JAR dedicated-server smoke on NeoForge ${{ matrix.neoforge }}
+      - name: MILESTONE-003 packaged-JAR dedicated-server smoke on NeoForge ${{ matrix.neoforge }}
         shell: bash
         run: |
           set -euo pipefail
@@ -202,7 +208,7 @@ jobs:
           server_dir="$GITHUB_WORKSPACE/build/packaged-server-${{ matrix.neoforge }}"
           installer="$server_dir/neoforge-installer.jar"
           installer_sha="$server_dir/neoforge-installer.jar.sha256"
-          log="$GITHUB_WORKSPACE/build/exp-002-packaged-server-${{ matrix.neoforge }}.log"
+          log="$GITHUB_WORKSPACE/build/exp-003-packaged-server-${{ matrix.neoforge }}.log"
           mkdir -p "$server_dir"
 
           base_url="https://maven.neoforged.net/releases/net/neoforged/neoforge/${{ matrix.neoforge }}"
@@ -275,17 +281,17 @@ jobs:
             exit 1
           fi
 
-          echo "MILESTONE-002 packaged-JAR server smoke passed on NeoForge ${{ matrix.neoforge }}"
+          echo "MILESTONE-003 packaged-JAR server smoke passed on NeoForge ${{ matrix.neoforge }}"
 
-      - name: Upload JAR and EXP-002 diagnostics
+      - name: Upload JAR and EXP-003 diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cctweakedhighaudio-exp-002-neoforge-${{ matrix.neoforge }}
+          name: cctweakedhighaudio-exp-003-neoforge-${{ matrix.neoforge }}
           path: |
             build/libs/cctweakedhighaudio-*.jar
-            build/exp-002-jar-sha256.txt
-            build/exp-002-dev-server-*.log
-            build/exp-002-packaged-server-*.log
+            build/exp-003-jar-sha256.txt
+            build/exp-003-dev-server-*.log
+            build/exp-003-packaged-server-*.log
             build/packaged-server-*/install.log
           if-no-files-found: error
