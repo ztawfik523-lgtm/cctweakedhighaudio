@@ -1,7 +1,6 @@
 package dev.ztawfik.cctweakedhighaudio.client.audio.exp3;
 
 import dev.ztawfik.cctweakedhighaudio.client.audio.exp2.GeneratedPcmSound;
-import dev.ztawfik.cctweakedhighaudio.client.audio.exp2.GeneratedPcmStream;
 import net.minecraft.client.resources.sounds.AbstractSoundInstance;
 import net.minecraft.client.resources.sounds.Sound;
 import net.minecraft.client.resources.sounds.SoundInstance;
@@ -15,9 +14,9 @@ import java.util.concurrent.CompletableFuture;
 /** One Minecraft-owned streaming sound used by the EXP-003 capacity probe. */
 public final class Exp3CapacitySound extends AbstractSoundInstance {
     private final int index;
-    private final GeneratedPcmStream stream;
+    private final Exp3CapacityStream stream;
 
-    public Exp3CapacitySound(int index, Vec3 position, GeneratedPcmStream stream) {
+    public Exp3CapacitySound(int index, Vec3 position, Exp3CapacityStream stream) {
         super(GeneratedPcmSound.LOCATION, SoundSource.RECORDS, SoundInstance.createUnseededRandom());
         this.index = index;
         this.stream = stream;
@@ -40,7 +39,7 @@ public final class Exp3CapacitySound extends AbstractSoundInstance {
         return index;
     }
 
-    public GeneratedPcmStream stream() {
+    public Exp3CapacityStream stream() {
         return stream;
     }
 }
