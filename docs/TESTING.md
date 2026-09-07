@@ -19,7 +19,8 @@ These do **not** consume a manual test cycle and should run whenever practical:
 - CI against the supported NeoForge compile matrix;
 - unit tests where they are cheap and deterministic;
 - static validation of resources/configuration;
-- source/bytecode inspection when it can answer the question without launching Minecraft.
+- source/bytecode/method-supplier inspection when it can answer the question without a user launch;
+- dedicated-server startup smoke tests where CI can run them automatically.
 
 ### Manual Minecraft/runtime checks — batch them
 
@@ -28,7 +29,7 @@ Manual tests should normally be accumulated into one focused test session after 
 Default rule:
 
 1. Make several related implementation changes.
-2. Keep automatic build/CI green while iterating.
+2. Keep automatic build/CI checks green while iterating.
 3. Accumulate runtime questions into one checklist.
 4. Ask for one manual test session that covers all of them together.
 5. Record the result in `PROTOTYPES.md` or the relevant milestone/ADR.
@@ -39,7 +40,7 @@ Do **not** request a manual launch for documentation edits, refactors with no be
 
 Break the batching rule only when the next implementation decision depends on runtime evidence that cannot reasonably be obtained another way, for example:
 
-- a Mixin may or may not apply at all;
+- a speaker augmentation mechanism may register but not appear through the real Lua peripheral path;
 - a client sound hook may not fire;
 - an OpenAL lifecycle behavior is architecture-blocking;
 - continuing without the result would likely create throwaway work.
@@ -50,7 +51,7 @@ Even then, combine all currently useful observations into the same test build.
 
 A milestone may contain many code patches but should normally have **one consolidated manual gate session** unless a blocker forces an earlier probe.
 
-For example, `MILESTONE-001` should prefer one probe build that checks method visibility, native speaker regression, direct/wired attachment, lifecycle behavior, and both target NeoForge versions together rather than separate user tests for each small edit.
+For example, `MILESTONE-001` should prefer one probe build that checks method visibility, native speaker regression, direct/wired attachment, lifecycle behavior, turtle/pocket visibility where practical, and both target NeoForge versions rather than separate user tests for each small edit.
 
 ## Result recording
 
