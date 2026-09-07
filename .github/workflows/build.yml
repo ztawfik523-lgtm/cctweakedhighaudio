@@ -129,6 +129,8 @@ jobs:
 
           self_check=0
           registered=0
+          live_registry=0
+          live_registry_fail=0
           server_ready=0
           for _ in $(seq 1 180); do
             if grep -Fq '[EXP-001] GenericSource method-supplier self-check PASS' "$log"; then
@@ -137,10 +139,19 @@ jobs:
             if grep -Fq '[EXP-001] GenericSource registered' "$log"; then
               registered=1
             fi
+            if grep -Fq '[EXP-001] live ServerContext self-check PASS' "$log"; then
+              live_registry=1
+            fi
+            if grep -Fq '[EXP-001] live ServerContext self-check FAIL' "$log"; then
+              live_registry_fail=1
+            fi
             if grep -Fq 'Done (' "$log"; then
               server_ready=1
             fi
-            if [[ "$self_check" -eq 1 && "$registered" -eq 1 && "$server_ready" -eq 1 ]]; then
+            if [[ "$live_registry_fail" -eq 1 ]]; then
+              break
+            fi
+            if [[ "$self_check" -eq 1 && "$registered" -eq 1 && "$live_registry" -eq 1 && "$server_ready" -eq 1 ]]; then
               break
             fi
             if ! kill -0 "$gradle_pid" 2>/dev/null; then
@@ -149,13 +160,13 @@ jobs:
             sleep 1
           done
 
-          if [[ "$self_check" -ne 1 || "$registered" -ne 1 || "$server_ready" -ne 1 ]]; then
-            echo "EXP-001 GenericSource smoke failed: self_check=$self_check registered=$registered server_ready=$server_ready"
+          if [[ "$self_check" -ne 1 || "$registered" -ne 1 || "$live_registry" -ne 1 || "$live_registry_fail" -ne 0 || "$server_ready" -ne 1 ]]; then
+            echo "EXP-001 GenericSource smoke failed: self_check=$self_check registered=$registered live_registry=$live_registry live_registry_fail=$live_registry_fail server_ready=$server_ready"
             tail -n 400 "$log" || true
             exit 1
           fi
 
-          echo "EXP-001 GenericSource smoke passed on NeoForge ${{ matrix.neoforge }}"
+          echo "EXP-001 GenericSource live-registry smoke passed on NeoForge ${{ matrix.neoforge }}"
 
       - name: Upload JAR and EXP-001 diagnostics
         if: always()
