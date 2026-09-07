@@ -54,7 +54,7 @@ jobs:
       - name: Build against NeoForge ${{ matrix.neoforge }}
         run: ./gradlew --no-daemon -Pneo_version=${{ matrix.neoforge }} build
 
-      - name: Verify packaged mod metadata
+      - name: Verify packaged mod metadata and EXP-001 Mixin
         shell: bash
         run: |
           set -euo pipefail
@@ -81,15 +81,77 @@ jobs:
           grep -Fq 'versionRange="[1.120.0]"' <<<"$metadata"
           grep -Fq 'versionRange="[1.21.1]"' <<<"$metadata"
           grep -Fq 'versionRange="[21.1.247,21.2)"' <<<"$metadata"
+          grep -Fq '[[mixins]]' <<<"$metadata"
+          grep -Fq 'config="cctweakedhighaudio.mixins.json"' <<<"$metadata"
 
           jar_entries="$(unzip -Z1 "$jar_path")"
           grep -Fq 'dev/ztawfik/cctweakedhighaudio/HighAudio.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/integration/cct/CctIntegrationSelfCheck.class' <<<"$jar_entries"
+          grep -Fq 'dev/ztawfik/cctweakedhighaudio/integration/cct/mixin/SpeakerPeripheralMixin.class' <<<"$jar_entries"
+          grep -Fq 'cctweakedhighaudio.mixins.json' <<<"$jar_entries"
 
-          echo "Verified packaged metadata and HighAudio entrypoint in $jar_path"
+          mixin_json="$(unzip -p "$jar_path" cctweakedhighaudio.mixins.json)"
+          grep -Fq '"required": true' <<<"$mixin_json"
+          grep -Fq '"SpeakerPeripheralMixin"' <<<"$mixin_json"
 
-      - name: Upload JAR
+          javap -classpath "$jar_path" -v dev.ztawfik.cctweakedhighaudio.integration.cct.mixin.SpeakerPeripheralMixin > build/exp-001-mixin-javap.txt
+          grep -Fq 'highAudioProbe' build/exp-001-mixin-javap.txt
+          grep -Fq 'dan200.computercraft.api.lua.LuaFunction' build/exp-001-mixin-javap.txt
+
+          echo "Verified packaged metadata, Mixin config/class, and compiled @LuaFunction probe in $jar_path"
+
+      - name: EXP-001 dedicated-server Mixin smoke on NeoForge ${{ matrix.neoforge }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p run/server
+          printf 'eula=true\n' > run/server/eula.txt
+          log="build/exp-001-server-${{ matrix.neoforge }}.log"
+
+          ./gradlew --no-daemon -Pneo_version=${{ matrix.neoforge }} runServer >"$log" 2>&1 &
+          gradle_pid=$!
+
+          cleanup() {
+            pkill -TERM -P "$gradle_pid" 2>/dev/null || true
+            kill "$gradle_pid" 2>/dev/null || true
+            wait "$gradle_pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          mixin_ok=0
+          server_ready=0
+          for _ in $(seq 1 180); do
+            if grep -Fq '[EXP-001] SpeakerPeripheral mixin self-check PASS' "$log"; then
+              mixin_ok=1
+            fi
+            if grep -Fq 'Done (' "$log"; then
+              server_ready=1
+            fi
+            if [[ "$mixin_ok" -eq 1 && "$server_ready" -eq 1 ]]; then
+              break
+            fi
+            if ! kill -0 "$gradle_pid" 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+
+          if [[ "$mixin_ok" -ne 1 || "$server_ready" -ne 1 ]]; then
+            echo "EXP-001 dedicated-server smoke failed: mixin_ok=$mixin_ok server_ready=$server_ready"
+            tail -n 400 "$log" || true
+            exit 1
+          fi
+
+          echo "EXP-001 dedicated-server smoke passed on NeoForge ${{ matrix.neoforge }}"
+
+      - name: Upload JAR and EXP-001 diagnostics
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: cctweakedhighaudio-neoforge-${{ matrix.neoforge }}
-          path: build/libs/cctweakedhighaudio-*.jar
+          path: |
+            build/libs/cctweakedhighaudio-*.jar
+            build/exp-001-mixin-javap.txt
+            build/exp-001-server-*.log
           if-no-files-found: error

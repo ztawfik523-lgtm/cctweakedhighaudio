@@ -1,0 +1,7 @@
+{
+  "required": true,
+  "package": "dev.ztawfik.cctweakedhighaudio.integration.cct.mixin",
+  "mixins": [
+    "SpeakerPeripheralMixin"
+  ]
+}
