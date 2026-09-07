@@ -42,9 +42,12 @@ local function retryBoolean(label, fn)
         if not ok then
             error(label .. " raised an error: " .. tostring(result), 0)
         end
+        if result == true then
+            print(("%s accepted on attempt %d"):format(label, attempt))
+            return true
+        end
         if result ~= false then
-            print(("%s accepted on attempt %d result=%s"):format(label, attempt, tostring(result)))
-            return result
+            error(label .. " returned unexpected non-boolean result: " .. tostring(result), 0)
         end
         print(("%s busy on attempt %d; retrying"):format(label, attempt))
         sleep(0.2)
@@ -52,7 +55,26 @@ local function retryBoolean(label, fn)
     error(label .. " returned false on every retry", 0)
 end
 
+local function validateProbe(label, probe)
+    if type(probe) ~= "table" then
+        error(label .. " did not return a table", 0)
+    end
+    if probe.experiment ~= "EXP-001" then
+        error(label .. " returned unexpected experiment: " .. tostring(probe.experiment), 0)
+    end
+    if probe.probeVersion ~= 1 then
+        error(label .. " returned unexpected probeVersion: " .. tostring(probe.probeVersion), 0)
+    end
+    if probe.integration ~= "generic_source" then
+        error(label .. " is not the GenericSource implementation: " .. tostring(probe.integration), 0)
+    end
+    if type(probe.runtimeClass) ~= "string" or type(probe.nativeSource) ~= "string" or type(probe.identityHash) ~= "string" then
+        error(label .. " is missing identity diagnostics", 0)
+    end
+end
+
 local before = speaker.highAudioProbe()
+validateProbe("probe.before", before)
 print("probe.before=" .. textutils.serialize(before, { compact = true }))
 
 local noteOk = retryBoolean("playNote", function()
@@ -81,6 +103,7 @@ speaker.stop()
 sleep(0.2)
 
 local after = speaker.highAudioProbe()
+validateProbe("probe.after", after)
 print("probe.after=" .. textutils.serialize(after, { compact = true }))
 
 local identityStable = before.nativeSource == after.nativeSource
@@ -89,6 +112,8 @@ local identityStable = before.nativeSource == after.nativeSource
 
 local summary = {
     target = name,
+    experiment = after.experiment,
+    probeVersion = after.probeVersion,
     integration = after.integration,
     highAudioProbe = true,
     nativeMethodsPresent = #missing == 0,
