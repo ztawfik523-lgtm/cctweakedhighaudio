@@ -1,6 +1,6 @@
 # TEST-BATCH-003 — EXP-003 capacity and synchronization proof
 
-**Status:** PART A BASELINE PASS — vanilla streaming cap measured at 8; PART A2 AUTOMATIC PASS — manual 16-channel runtime NOT RUN  
+**Status:** PART A BASELINE PASS — vanilla streaming cap measured at 8; PART A2 SPR-OFF REAL-CLIENT PASS — exact SPR coexistence/reload NEXT  
 **Milestone:** MILESTONE-003  
 **Experiment:** EXP-003  
 **Branch:** `milestone-003-exp-003-capacity-sync-rebalance`
@@ -88,7 +88,7 @@ Do not respond to this result by immediately building an independent raw-OpenAL 
 
 ## Re-evaluation after Part A
 
-Source research and exact runtime evidence now support a narrower fourth candidate before the earlier A/B/C backend fork: **rebalance Minecraft's own static/streaming source reservation while keeping Minecraft ownership and the existing total source budget**.
+Source research and exact runtime evidence support a narrower candidate before the earlier A/B/C backend fork: **rebalance Minecraft's own static/streaming source reservation while keeping Minecraft ownership and the existing total source budget**.
 
 Relevant verified/rechecked points:
 
@@ -188,43 +188,105 @@ Additional automatic checks passed:
 
 Independent artifact inspection reconfirmed the two matrix JARs are byte-identical and match the SHA-256 above. No HighAudio/Mixin/OpenAL allocation error was found in the candidate diagnostics.
 
-### Manual Part A2 acceptance evidence — NOT RUN
+### Manual Part A2 SPR-off acceptance evidence — PASS
 
-With SPR absent first:
+The conservative candidate was run on a real NeoForge 21.1.247 Windows client with SPR absent. OpenAL initialized on:
 
 ```text
-/highaudio_exp3 capacity 8
-wait for final
+OpenAL Soft on Speakers (4- USB Audio Device)
+```
+
+The runtime logged:
+
+```text
+reportedChannelCount=255
+originalStatic=247
+originalStreaming=8
+newStatic=239
+newStreaming=16
+combinedPreserved=true
+rebalanceApplied=true
+targetStreaming=16
+```
+
+The user exercised:
+
+```text
+4, 8, 12, 16, 16, 16, 16, 16
+```
+
+Measured result:
+
+| Run | Requested | Unique captures | Early active sounds | Streaming debug | End state |
+|---:|---:|---:|---:|---|---|
+| 1 | 4 | 4 | 4 | `4/16` | natural final; 4 closed |
+| 2 | 8 | 8 | 8 | `8/16` | natural final; 8 closed |
+| 3 | 12 | 12 | 12 | `12/16` | natural final; 12 closed |
+| 4 | 16 | 16 | 16 | `16/16` | natural final; 16 closed |
+| 5 | 16 | 16 | 16 | `16/16` | natural final; 16 closed |
+| 6 | 16 | 16 | 16 | `16/16` | explicit stop; 16 closed |
+| 7 | 16 | 16 | 16 | `16/16` | explicit stop; 16 closed |
+| 8 | 16 | 16 | 16 | `16/16` | natural final; 16 closed |
+
+The 16-channel target therefore succeeded **five separate times**. Every capture reported `eventThread=Sound engine`.
+
+Natural 16-channel runs retained `captures=16`, `activeSounds=16`, `closedStreams=0`, and `soundDebug=... + 16/16` through t+5/t+20/t+40 snapshots. Run 6 also retained all 16 through t+40 before explicit stop. Run 7 was intentionally stopped earlier and therefore showed inactive/closed state by its t+40 snapshot.
+
+All completed runs reached `phase=final` with `inactiveTicks=10` and every allocated stream closed. The two explicit stop cycles cleaned all 16 streams. Attempts to begin a new run before finalization were refused, and no stale-run capture was observed.
+
+Minecraft static-side activity was observed simultaneously with a saturated HighAudio streaming pool, including states such as:
+
+```text
+Sounds: 1/239 + 16/16
+Sounds: 2/239 + 16/16
+```
+
+Across the supplied `latest.log` and `debug.log`, there were no `ERROR` or `FATAL` entries and no HighAudio/OpenAL/Mixin allocation failure. The observed YACL/offline/assets/goat-horn/shader warnings are unrelated to the Part A2 path.
+
+Canonical evidence:
+
+`docs/test-batches/evidence/TEST-BATCH-003-PARTA2-NEOFORGE-21.1.247.md`
+
+### Part A2 SPR-off conclusion
+
+The tested real runtime now supports the project's **16 simultaneous HighAudio streaming-channel stress target** through Minecraft-owned channels while preserving the combined source reservation.
+
+This closes the SPR-off capacity side of Part A2. It does **not** yet prove exact SPR coexistence or reload reapplication on the real device, so ADR-0009 remains Proposed.
+
+### Exact SPR coexistence/reload acceptance evidence — NEXT
+
+Use exact SPR `1.21.1-1.5.1` with the same frozen HighAudio candidate.
+
+In one launch:
+
+```text
 /highaudio_exp3 capacity 16
-wait for final
+wait for phase=final
+play/confirm at least one ordinary Minecraft sound
+F3+T
+wait for the reload to complete
+/highaudio_exp3 capacity 16
+wait for phase=final
 ```
 
-Expected success evidence:
-
-```text
-streaming reservation rebalance ... originalStreaming=8 ... newStreaming=16 ... combinedPreserved=true ... rebalanceApplied=true
-capacity requested=16
-captures=16
-activeSounds=16
-soundDebug=... + 16/16
-```
-
-The user does not need to refine intermediate counts unless 16 fails: the vanilla threshold is already known precisely from Part A.
-
-Then perform one short SPR-on repeat only after the clean baseline proves 16 allocation. Required SPR-on checks:
+Required success evidence:
 
 - no Mixin application conflict;
-- 16 Minecraft-owned streaming channels still allocate;
-- HighAudio channels continue through Minecraft `Channel.play()`;
+- the reservation rebalance applies with SPR present;
+- 16 Minecraft-owned streaming channels allocate before reload;
+- normal Minecraft static sound remains available;
+- F3+T rebuild/reload re-applies the reservation;
+- 16 channels allocate again after reload;
 - no HighAudio/SPR/OpenAL error;
-- normal Minecraft sounds still play;
-- F3+T/device sound-engine rebuild re-applies the reservation and returns to a clean state.
+- HighAudio channels continue through Minecraft `Channel.play()`.
 
 The SPR-on comparison is a capacity/coexistence proof, not the final MILESTONE-010 SPR correctness gate.
 
+If this exact SPR coexistence/reload comparison passes, ADR-0009 may be accepted as the M3 capacity policy and EXP-003 can move to Part B synchronization measurement.
+
 ## Part B — synchronization boundary
 
-Part B remains unresolved. Do not choose a synchronization architecture until Part A2 either succeeds or fails.
+Part B remains unresolved. Do not choose a synchronization architecture until the exact SPR coexistence/reload comparison closes Part A2.
 
 ### Option A — pure Minecraft/high-level scheduling
 
