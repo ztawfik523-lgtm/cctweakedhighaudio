@@ -37,7 +37,7 @@ Deliverables completed:
 **GATE-000 re-audit evidence:**
 
 - docs identify accepted vs proposed vs experiment-required decisions;
-- exact CC:T tag `v1.21.1-1.120.0` confirms the pinned Maven coordinates (`common-api`, `forge-api`, runtime `forge`) and explicitly warns that internal/mixin use is not stable API;
+- exact CC:T tag `v1.21.1-1.120.0` confirms the pinned Maven coordinates (`common-api`, `forge-api`, runtime `forge`) and explicitly warns that internal use is not stable API;
 - repository-wide recheck found no stale CC:T 1.120.2 or `core-api` dependency reference;
 - official NeoForge 1.21.1 NeoGradle MDK conventions match the scaffold's Java 21, UserDev, Gradle 9.2.1, Parchment, and loader-version setup;
 - Java 21 and Minecraft 1.21.1 are explicit in build metadata;
@@ -50,23 +50,66 @@ Deliverables completed:
 - branch diff from the previous `main` contains only intended bootstrap/reproducibility/documentation changes and no feature implementation;
 - **manual Minecraft launches used for MILESTONE-000: 0**.
 
-Manual runtime testing from this point follows `docs/TESTING.md`: automatic compile/CI checks remain frequent, while user-run Minecraft tests are accumulated into broader milestone-gate sessions unless an architecture-blocking runtime question requires an earlier probe.
+The MILESTONE-001 integration pivot does **not** invalidate GATE-000. Do not redo MILESTONE-000 unless new evidence specifically contradicts it.
 
 ---
 
 ## MILESTONE-001 — EXP-001 CC:T speaker augmentation proof
 
-**Goal:** prove the proposed additive `SpeakerPeripheral` Mixin works in the real assembled mod without breaking native peripherals.
+**Status:** IN PROGRESS  
+**Current candidate:** targeted `GenericSource` (`ADR-0008`)  
+**Superseded candidate:** additive `SpeakerPeripheral` Mixin (`ADR-0003`)  
+**Manual gate:** `TEST-BATCH-001` NOT RUN
 
-Implement only enough to expose something like:
+**Goal:** prove HighAudio can add a diagnostic Lua method to the real CC:T speaker without replacing the speaker peripheral or regressing native behavior.
+
+Implement only enough to expose:
 
 ```lua
 speaker.highAudioProbe()
 ```
 
-The probe should identify emitter kind and return stable diagnostic information. It should not start real media playback.
+The probe should identify emitter kind and return stable diagnostic information. It must not start real HighAudio media playback.
 
-Test:
+### Candidate selection history
+
+The first candidate was a minimal additive Mixin into exact CC:T 1.120.0 `SpeakerPeripheral`. Automatic checks showed that candidate could build/apply and dedicated-server startup succeeded on both target NeoForge versions.
+
+Before the manual gate, exact CC:T 1.120.0 source was re-evaluated. `ComputerCraftAPI.registerGenericSource` plus a method targeted at the exact internal `SpeakerPeripheral` can contribute Lua methods through CC:T's normal method supplier without transforming CC:T bytecode or replacing the peripheral object.
+
+A separate comparison branch/run automatically proved the GenericSource mechanism can be generated/registered and start on both exact NeoForge versions:
+
+```text
+branch: exp-001-genericsource-comparison
+commit: ecacab361416c0bbdbd1bd789806f567317773db
+CI run: 34078670979
+JAR SHA-256:
+e9a82ee4f4403881c01c4901b2dff88d86fc16cafa882581430064f9c2f1471a
+```
+
+The implementation milestone was then restarted from clean `main` on:
+
+```text
+milestone-001-exp-001-genericsource
+```
+
+This clean restart is specifically to avoid carrying unseen Mixin files/configuration into the chosen candidate. It does not repeat MILESTONE-000.
+
+### Automatic checks
+
+Before the manual gate, CI should prove on both NeoForge 21.1.247 and 21.1.248:
+
+- exact stack compiles;
+- the finished JAR contains the GenericSource integration/self-check;
+- CC:T's exact method supplier generates `highAudioProbe` for a `SpeakerPeripheral` subtype;
+- native `playNote`, `playSound`, `playAudio`, and `stop` remain present in that generated method map;
+- GenericSource registration occurs;
+- the dedicated server reaches ready state;
+- exact JAR SHA-256 is recorded.
+
+### Consolidated runtime test
+
+Use `TEST-BATCH-001` to cover:
 
 - placed speaker next to computer;
 - placed speaker via wired modem/network;
@@ -74,31 +117,45 @@ Test:
 - native `playSound`;
 - native `playAudio`;
 - native `stop`;
-- computer attach/detach;
+- computer attach/detach/reboot;
 - speaker chunk unload/reload;
 - block break/re-place;
 - turtle speaker method visibility;
 - pocket speaker method visibility if practical;
-- NeoForge 21.1.247;
-- NeoForge 21.1.248.
+- NeoForge 21.1.247 broad pass;
+- NeoForge 21.1.248 compatibility subset.
 
-**Gate GATE-001:**
+Normal temporary native speaker `false`/busy returns should be retried and distinguished from missing methods, exceptions, or persistently broken dispatch.
 
-1. HighAudio method is discoverable and callable on the intended speaker type(s).
-2. Native methods remain present and behavior is not observably regressed.
+### GATE-001
+
+GATE-001 passes only when:
+
+1. `highAudioProbe` is discoverable and callable on the intended normal speaker.
+2. Native `playNote`, `playSound`, `playAudio`, and `stop` remain present and behaviorally usable.
 3. Direct and wired attachment work.
-4. No duplicate/peripheral-identity churn is caused by the integration.
-5. The target builds load without Mixin failure on both NeoForge versions.
+4. HighAudio does not create a duplicate/replacement speaker peripheral or cause identity churn.
+5. Lifecycle transitions do not corrupt method exposure.
+6. Turtle/pocket exposure is observed rather than guessed.
+7. Both exact NeoForge target builds pass registration/startup evidence.
 
-**Decision after gate:** accept/reject/supersede `ADR-0003`.
+### Decision after gate
 
-If it fails, compare targeted alternatives in this order:
+If PASS:
 
-1. more specific additive Mixin target;
-2. `IDynamicPeripheral`/forwarding strategy if feasible without replacing identity incorrectly;
-3. capability-provider wrapping only with explicit recursion/invalidation/equality proof.
+- accept `ADR-0008`;
+- record exact evidence in `PROTOTYPES.md` and `VERIFIED-FACTS.md` where justified;
+- mark MILESTONE-001/GATE-001 complete;
+- proceed to MILESTONE-002.
 
-Do not jump directly to a full CC:T fork.
+If FAIL:
+
+1. preserve the GenericSource failure evidence;
+2. distinguish implementation failure from deliberate CC:T `disabled_generic_methods` configuration;
+3. first fallback is the already-viable additive `SpeakerPeripheral` Mixin from `ADR-0003`;
+4. then consider forwarding/`IDynamicPeripheral` only if identity can be preserved;
+5. capability wrapping only with explicit recursion/invalidation/equality proof;
+6. do not jump directly to a full CC:T fork.
 
 ---
 
