@@ -51,22 +51,39 @@ NeoForge 21.1.247
 CC:Tweaked 1.120.0
 ```
 
-A local developer currently needs **Gradle 9.2.1** available on PATH:
+Local builds use the committed Gradle **9.2.1** wrapper, so a separate Gradle installation is not required:
 
 ```text
-gradle build
+./gradlew build
 ```
 
-A Gradle wrapper is intentionally not claimed yet: the repository-writing connector used for the bootstrap cannot safely copy the MDK's binary `gradle-wrapper.jar`. CI installs Gradle 9.2.1 explicitly instead of committing a broken half-wrapper. A standard wrapper can be generated later from a normal local checkout.
+On Windows:
 
-GitHub Actions builds the project automatically against both:
+```text
+gradlew.bat build
+```
+
+GitHub Actions also builds through the committed wrapper against both:
 
 ```text
 NeoForge 21.1.247
 NeoForge 21.1.248
 ```
 
-MILESTONE-000 does not require a user-run Minecraft session; build compatibility is checked automatically. Manual Minecraft tests begin only when a runtime question actually needs them and are batched according to [`docs/TESTING.md`](docs/TESTING.md).
+CI additionally inspects the finished JAR and verifies that:
+
+- `META-INF/neoforge.mods.toml` exists and contains no unexpanded `${...}` placeholders;
+- the packaged mod id is `cctweakedhighaudio`;
+- CC:Tweaked is required at exactly `1.120.0`;
+- Minecraft is required at exactly `1.21.1`;
+- the declared NeoForge compatibility range is `[21.1.247,21.2)`;
+- `dev/ztawfik/cctweakedhighaudio/HighAudio.class` is actually packaged.
+
+### MILESTONE-000 re-audit
+
+The bootstrap was rechecked against the exact pinned CC:T 1.120.0 release and the official NeoForge 1.21.1 NeoGradle MDK. The stack pins, CC:T Maven coordinates, Java/Parchment settings, and dependency metadata structure were confirmed. The re-audit then strengthened reproducibility by adding the standard Gradle wrapper and strengthened CI by validating the packaged artifact instead of treating compilation alone as sufficient evidence.
+
+MILESTONE-000 does not require a user-run Minecraft session; build/package compatibility is checked automatically. Manual Minecraft tests begin only when a runtime question actually needs them and are batched according to [`docs/TESTING.md`](docs/TESTING.md).
 
 ## Documentation status vocabulary
 
