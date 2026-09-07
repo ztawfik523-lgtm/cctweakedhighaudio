@@ -133,7 +133,7 @@ The strongest next candidate is a narrow **Minecraft-owned source-reservation re
 - do not increase the total source budget;
 - do not add HighAudio-owned `alGenSources`/`alDeleteSources` lifecycle.
 
-On the measured runtime this is expected to move from `247 static + 8 streaming` to `239 static + 16 streaming`, but that split is **not a universal constant** and must be derived from the runtime's existing limits.
+On the measured 255-channel runtime this means `247 static + 8 streaming -> 239 static + 16 streaming`, but the implementation derives the original reservation rather than treating those numbers as universal constants.
 
 Why this candidate ranks ahead of the alternatives:
 
@@ -143,25 +143,86 @@ Why this candidate ranks ahead of the alternatives:
 4. Existing 1.21-family source-limit implementations demonstrate that these pool sizes are technically patchable.
 5. SPR 1.21.1 hooks Minecraft `Library`/`SoundEngine`/`Channel` and `Channel.play()`. Keeping Minecraft-owned channels preserves the path SPR already expects; independent sources would require a separate compatibility design.
 
-### Part A2 — next implementation
+### Part A2 reservation-rebalance automatic candidate — PASS
 
-Branch:
+Proposed decision: `ADR-0009` remains **Proposed**, not accepted.
 
-`milestone-003-exp-003-capacity-sync-rebalance`
-
-Build the smallest client-only experimental patch that changes only the Minecraft audio reservation. Required diagnostics on every sound-engine init/reload:
+Frozen automatic candidate:
 
 ```text
-originalStatic=...
-originalStreaming=...
-newStatic=...
-newStreaming=...
-combinedPreserved=true/false
+branch:             milestone-003-exp-003-capacity-sync-rebalance
+code/CI commit:     fc4c63efc5377700d71a78683cd123dc60b7d635
+CI run:             34102697796
+NeoForge 21.1.247:  PASS
+NeoForge 21.1.248:  PASS
+JAR SHA-256 on both matrix legs:
+6a9e1eeb548b7f2b3b985f3357355510d5e8dfcbbb4319d1fbce6c11c0dabe96
 ```
 
-Automatic checks must cover NeoForge 21.1.247 and 21.1.248, packaged-JAR dedicated-server startup, M1/M2/M3 regression fixtures, Mixin application, and absence of HighAudio-owned raw source allocation.
+Both matrix artifacts are byte-identical.
 
-Only after those checks pass should another manual launch occur. First manual run is SPR absent and only needs `capacity 8` then `capacity 16`. SPR-on comparison follows only if the clean baseline reaches 16/16.
+The candidate introduces one client-only experimental Mixin:
+
+`client/audio/exp3/mixin/LibraryStreamingReservationMixin`
+
+It:
+
+- captures Minecraft's device-derived channel-count input during `Library.init(...)`;
+- derives the exact vanilla 1.21.1 original static/streaming reservation;
+- raises the streaming reservation to at most 16 while subtracting the same delta from static;
+- preserves the original combined reservation;
+- fails loudly if the actual constructor arguments do not match the derived vanilla reservation shape;
+- does not own raw OpenAL sources.
+
+Exact dev-client audio-init smoke on both `.247` and `.248` logged:
+
+```text
+reportedChannelCount=255
+originalStatic=247
+originalStreaming=8
+newStatic=239
+newStreaming=16
+combinedPreserved=true
+targetStreaming=16
+```
+
+OpenAL initialized and Minecraft's sound engine started after the diagnostic. The CI uses OpenAL Soft `No Output`, so this proves the exact Mixin/application/calculation boundary but not audible 16-stream allocation on the user's actual USB audio device.
+
+Automatic regression evidence also passed:
+
+- exact build/package matrix;
+- expected Mixin packaged and old `SpeakerPeripheralMixin` absent;
+- no `alGenSources` / `alDeleteSources` / AL10 raw-source ownership in the reservation patch;
+- M1 GenericSource development-server self-check;
+- M2/M3 playback/capacity fixtures packaged;
+- packaged-JAR dedicated-server startup on both target NeoForge versions.
+
+Independent artifact inspection confirmed the matrix JARs are byte-identical and match the recorded SHA. The only CI client `ERROR` was the headless Linux narrator failing to load `flite`, unrelated to HighAudio/Mixin/OpenAL allocation.
+
+### Next user-only evidence — Part A2 manual baseline
+
+Use the exact automatic candidate above with SPR absent first. Only two capacity runs are necessary because Part A already located vanilla's boundary:
+
+```text
+/highaudio_exp3 capacity 8
+wait for phase=final
+/highaudio_exp3 capacity 16
+wait for phase=final
+```
+
+Preserve `latest.log` and `debug.log`.
+
+Success requires the real Windows/audio-device runtime to show:
+
+```text
+streaming reservation rebalance ... originalStreaming=8 ... newStreaming=16 ... combinedPreserved=true
+capacity requested=16
+captures=16
+activeSounds=16
+soundDebug=... + 16/16
+```
+
+Do **not** mark ADR-0009 Accepted merely from the automatic client-init result. If the SPR-off real client reaches 16/16 cleanly, perform a second short launch with exact SPR 1.5.1 for coexistence/reload checks before accepting the reservation policy.
 
 See `docs/test-batches/TEST-BATCH-003.md` for exact acceptance criteria.
 
@@ -179,4 +240,4 @@ Do not start real media upload, codecs, ContentId/cache/transfer, server MediaSe
 
 ## Manual-test cadence
 
-Keep implementation/source/CI checks frequent but batch user-only Minecraft observations. Do not request another client launch until the Part A2 candidate has passed exact automatic checks and artifact inspection.
+Keep implementation/source/CI checks frequent but batch user-only Minecraft observations. The Part A2 candidate has now passed the exact automatic gate and artifact inspection; the next justified client launch is the two-command SPR-off 8/16 capacity check above.
