@@ -18,26 +18,27 @@ import java.util.UUID;
 
 /** Client-only bounded content assembly, cache, decode, playback, and stop state. */
 public final class MediaClientController {
-    private static final CompressedContentCache CACHE = new CompressedContentCache(MediaLimits.CLIENT_CONTENT_CACHE_BYTES);
+    private static final MediaLimits.Values LIMITS = MediaLimits.current();
+    private static final CompressedContentCache CACHE = new CompressedContentCache(LIMITS.clientContentCacheBytes());
     private static final LinkedHashMap<UUID, UUID> SOURCE_SESSIONS = new LinkedHashMap<>();
     private static final Map<UUID, Pending> PENDING = new HashMap<>();
     private static final Map<UUID, Transfer> TRANSFERS = new HashMap<>();
     private static final LinkedHashMap<UUID, Active> ACTIVE = new LinkedHashMap<>();
 
-    private static int transferBytes;
-    private static int playbackBytes;
+    private static long transferBytes;
+    private static long playbackBytes;
 
     private MediaClientController() {
     }
 
     public static void handlePlay(MediaPayloads.Play payload) {
-        if (payload.contentLength() <= 0 || payload.contentLength() > MediaLimits.MAX_FILE_BYTES) {
+        if (payload.contentLength() <= 0 || payload.contentLength() > LIMITS.maxFileBytes()) {
             HighAudio.LOGGER.warn("Rejected HighAudio play with invalid content length {}", payload.contentLength());
             return;
         }
 
         stopSource(payload.sourceId());
-        while (SOURCE_SESSIONS.size() >= MediaLimits.MAX_CLIENT_SESSIONS) {
+        while (SOURCE_SESSIONS.size() >= LIMITS.clientSessionCap()) {
             stopSource(SOURCE_SESSIONS.entrySet().iterator().next().getKey());
         }
 
@@ -72,15 +73,17 @@ public final class MediaClientController {
         if (!pending.contentId.equals(payload.contentId())
             || pending.contentLength != payload.contentLength()
             || payload.contentLength() <= 0
-            || payload.contentLength() > MediaLimits.MAX_FILE_BYTES) {
+            || payload.contentLength() > LIMITS.maxFileBytes()) {
             failSession(payload.sessionId(), "content metadata did not match the authoritative play request");
             return;
         }
 
         removeTransfer(payload.sessionId());
-        if (TRANSFERS.size() >= MediaLimits.MAX_CLIENT_TRANSFERS
-            || transferBytes + payload.contentLength() > MediaLimits.MAX_CLIENT_TRANSFER_BYTES) {
-            failSession(payload.sessionId(), "client transfer limits are exhausted");
+        if (TRANSFERS.size() >= LIMITS.concurrentClientTransfers()
+            || payload.contentLength() > LIMITS.clientTransferMemoryBytes() - transferBytes) {
+            failSession(payload.sessionId(), "configured client transfer limit is exhausted (count "
+                + TRANSFERS.size() + "/" + LIMITS.concurrentClientTransfers() + ", reserved " + transferBytes
+                + "/" + LIMITS.clientTransferMemoryBytes() + " bytes)");
             return;
         }
         TRANSFERS.put(payload.sessionId(), new Transfer(payload.contentId(), payload.contentLength()));
@@ -92,7 +95,7 @@ public final class MediaClientController {
         if (transfer == null) return;
         var chunk = payload.bytes();
         if (chunk.length == 0
-            || chunk.length > MediaLimits.TRANSFER_CHUNK_BYTES
+            || chunk.length > LIMITS.networkTransferChunkBytes()
             || payload.offset() != transfer.received
             || chunk.length > transfer.bytes.length - transfer.received) {
             failSession(payload.sessionId(), "malformed or out-of-order content chunk");
@@ -154,10 +157,12 @@ public final class MediaClientController {
         if (!pending.sessionId.equals(SOURCE_SESSIONS.get(pending.sourceId))) return;
         try {
             var decoded = WavPcmDecoder.decode(content);
-            while (ACTIVE.size() >= MediaLimits.MAX_CLIENT_PLAYBACKS
-                || playbackBytes + decoded.bytes().length > MediaLimits.MAX_CLIENT_PLAYBACK_BYTES) {
+            while (ACTIVE.size() >= LIMITS.concurrentClientPlaybacks()
+                || decoded.bytes().length > LIMITS.clientPlaybackMemoryBytes() - playbackBytes) {
                 if (ACTIVE.isEmpty()) {
-                    failSession(pending.sessionId, "decoded PCM exceeds the bounded playback budget");
+                    failSession(pending.sessionId, "decoded PCM size " + decoded.bytes().length
+                        + " bytes exceeds the configured playback memory budget of "
+                        + LIMITS.clientPlaybackMemoryBytes() + " bytes");
                     return;
                 }
                 stopSource(ACTIVE.entrySet().iterator().next().getKey());

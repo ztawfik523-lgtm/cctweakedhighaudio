@@ -15,7 +15,9 @@ public final class MediaPcmStream implements AudioStream {
 
     public MediaPcmStream(AudioFormat format, byte[] pcm) {
         this.format = format;
-        this.pcm = pcm.clone();
+        // The decoder creates this array solely for the stream; taking ownership avoids doubling the configured
+        // decoded-playback allocation while the audio is active.
+        this.pcm = pcm;
     }
 
     @Override

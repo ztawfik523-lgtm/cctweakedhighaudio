@@ -93,13 +93,15 @@ public final class SpeakerGenericSource implements GenericSource {
         var uploadId = parseUuid(arguments.getString(0), "upload id");
         var owner = owner(speaker, computer);
         ByteBuffer bytes = arguments.getBytes(1);
-        if (bytes.remaining() > MediaLimits.MAX_UPLOAD_CHUNK_BYTES) {
+        var maximumChunkBytes = MediaLimits.current().uploadChunkBytes();
+        if (bytes.remaining() > maximumChunkBytes) {
             try {
                 MediaServerRuntime.abortUpload(owner, uploadId);
             } catch (UploadException ignored) {
                 // The size error is the useful failure for this call.
             }
-            throw new LuaException("Upload chunk exceeds the 16 KiB limit; the upload was aborted");
+            throw new LuaException("Upload chunk size " + bytes.remaining()
+                + " bytes exceeds the configured maximum of " + maximumChunkBytes + " bytes; the upload was aborted");
         }
 
         // Never retain CC:T's argument-backed ByteBuffer beyond this invocation.

@@ -12,7 +12,7 @@ This is the one consolidated manual gate for the first product slice. Do not spl
 - Minecraft 1.21.1, CC:Tweaked 1.120.0, and NeoForge 21.1.247 for the audible baseline;
 - Sound Physics Remastered absent;
 - one normal placed `computercraft:speaker` attached to one CC computer;
-- one clearly audible mono integer-PCM WAV, at most 2 MiB, 8-bit unsigned or 16-bit little-endian signed, with an 8–48 kHz sample rate;
+- one clearly audible mono integer-PCM WAV within the configured finite-file limit (64 MiB by default), 8-bit unsigned or 16-bit little-endian signed, with an 8–48 kHz sample rate;
 - copy [`../../tools/test-batch-004.lua`](../../tools/test-batch-004.lua) onto the CC computer as `test-batch-004` and copy the WAV into that computer's filesystem.
 
 ## One-run procedure

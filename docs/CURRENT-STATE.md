@@ -17,6 +17,7 @@ MILESTONE-000 through MILESTONE-003 are complete and their gates passed. The MIL
 - M2 added diagnostic arbitrary 48 kHz PCM playback through Minecraft-owned `SoundInstance`, `AudioStream`, and `Channel` lifecycle, including cleanup/reconstruction probes.
 - M3 added retained capacity/timing diagnostics and the accepted conservative streaming-reservation rebalance. On eligible normal layouts it makes up to 16 streaming slots available by reducing the static reservation by the same amount; it does not increase the combined source budget.
 - M4 adds production methods on normal placed CC:T speakers for bounded begin/write/finish/abort upload, SHA-256 content identity, a bounded in-memory server store, request-on-cache-miss client transfer, bounded client compressed caching, strict finite WAV PCM decode, Minecraft-owned positional playback, and authoritative stop.
+- M4 operational limits are restart-bound settings in one `cctweakedhighaudio-common.toml`. Practical defaults include 64 MiB files, independent upload/transfer/playback byte budgets, and count limits; internal ceilings and fail-visible relationship validation keep configurations bounded. See [`CONFIGURATION.md`](CONFIGURATION.md).
 
 The repository still contains experiment-era `exp2` and `exp3` package names. They hold validated diagnostics and regression mechanisms; the names do not make their evidence unresolved.
 

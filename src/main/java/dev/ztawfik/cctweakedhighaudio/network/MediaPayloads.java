@@ -121,7 +121,7 @@ public final class MediaPayloads {
             buffer -> new ContentChunk(
                 buffer.readUUID(),
                 buffer.readVarInt(),
-                buffer.readByteArray(MediaLimits.TRANSFER_CHUNK_BYTES)
+                buffer.readByteArray(MediaLimits.HARD_MAX_NETWORK_CHUNK_BYTES)
             )
         );
 
@@ -130,7 +130,7 @@ public final class MediaPayloads {
         }
 
         private void encode(RegistryFriendlyByteBuf buffer) {
-            if (bytes.length == 0 || bytes.length > MediaLimits.TRANSFER_CHUNK_BYTES) {
+            if (bytes.length == 0 || bytes.length > MediaLimits.HARD_MAX_NETWORK_CHUNK_BYTES) {
                 throw new IllegalArgumentException("Invalid content transfer chunk length");
             }
             buffer.writeUUID(sessionId);

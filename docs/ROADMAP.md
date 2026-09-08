@@ -187,15 +187,15 @@ Manual validation should be one consolidated vertical-slice session only after s
 Implemented M4 slice:
 
 - six low-level methods on placed block speakers: bounded upload begin/write/finish/abort plus play/stop;
-- SHA-256 `ContentId`, a 32 MiB server LRU content store, and useful server/client deduplication;
-- request-on-cache-miss transfer in 32 KiB clientbound chunks, with one delivery per client/session;
-- a 16 MiB client compressed-content LRU, at most four/8 MiB incomplete client transfers, and at most four/8 MiB decoded active playbacks;
+- SHA-256 `ContentId`, a configurable server LRU content store (512 MiB default), and useful server/client deduplication;
+- request-on-cache-miss transfer in configurable 32 KiB-default clientbound chunks, with one delivery per client/session;
+- a configurable 256 MiB-default client compressed-content LRU, at most eight/128 MiB-default incomplete client transfers, and at most eight/128 MiB-default decoded active playbacks;
 - strict RIFF/WAVE integer PCM decode for positional mono, 8-bit unsigned or 16-bit signed little-endian, at 8–48 kHz;
 - positional `SoundInstance` + `AudioStream` playback through Minecraft's normal `SoundManager` path;
-- authoritative replacement/stop, server-stop cleanup, client reload/logout cleanup, computer-detach cleanup, and 30-second incomplete-upload expiry;
+- authoritative replacement/stop, server-stop cleanup, client reload/logout cleanup, computer-detach cleanup, and configurable 60-second-default incomplete-upload expiry;
 - deterministic unit coverage plus development dedicated-server registration/Mixin smoke.
 
-Upload limits are 2 MiB per file, 16 KiB per Lua write, two incomplete uploads per computer/speaker, and 16 incomplete uploads server-wide. Server session state is capped at 256 sessions. Initial play announcements target players in the speaker's dimension within 64 blocks. Late-listener recovery and broader session lifecycle remain M5 work.
+M4 resource limits are now configured in one NeoForge common file with practical defaults, fail-visible relationship validation, and fixed internal safety ceilings. Upload defaults are 64 MiB per file, 64 KiB per Lua write, four incomplete uploads per computer/speaker, 64 server-wide, and a separately enforced 256 MiB aggregate in-flight reservation. Server sessions default to 256 and play announcements to 64 blocks. Late-listener recovery and broader session lifecycle remain M5 work.
 
 The remaining audible gate is specified in [`test-batches/TEST-BATCH-004.md`](test-batches/TEST-BATCH-004.md). Until it passes, the implementation is not evidence that real output is audible.
 

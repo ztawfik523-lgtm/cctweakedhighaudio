@@ -12,7 +12,11 @@ public final class WavPcmDecoder {
     }
 
     public static DecodedPcm decode(byte[] wav) throws WavFormatException {
-        if (wav.length > MediaLimits.MAX_FILE_BYTES) throw new WavFormatException("WAV exceeds the 2 MiB file limit");
+        var maximumBytes = MediaLimits.current().maxFileBytes();
+        if (wav.length > maximumBytes) {
+            throw new WavFormatException("WAV size " + wav.length + " bytes exceeds the configured maximum of "
+                + maximumBytes + " bytes");
+        }
         if (wav.length < 12 || !tag(wav, 0, "RIFF") || !tag(wav, 8, "WAVE")) {
             throw new WavFormatException("Malformed WAV: expected RIFF/WAVE header");
         }

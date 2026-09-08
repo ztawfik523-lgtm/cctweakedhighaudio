@@ -163,7 +163,7 @@ Finite media is content-addressed:
 ContentId = SHA-256(original file bytes)
 ```
 
-The M4 server keeps original files in a 32 MiB in-memory access-ordered LRU store, deduplicated by `ContentId`. Each client keeps a 16 MiB compressed-content LRU. Active decoded PCM is separately limited to four playbacks and 8 MiB total. Long-media rings and shared decode remain later work.
+The M4 server keeps original files in a configurable in-memory access-ordered LRU store, deduplicated by `ContentId`. Each client has a separately configurable compressed-content LRU and decoded-playback budget. Defaults are 512 MiB server content, 256 MiB client content, eight playbacks, and 128 MiB decoded PCM; internal ceilings remain fixed. Long-media rings and shared decode remain later work. See [`CONFIGURATION.md`](CONFIGURATION.md).
 
 Desired scaling:
 
@@ -189,7 +189,7 @@ Implemented low-level flow:
 begin upload -> bounded write chunks -> finish -> ContentId
 ```
 
-The implemented methods are `highAudioUploadBegin(size)`, `highAudioUploadWrite(uploadId, bytes)`, `highAudioUploadFinish(uploadId)`, and `highAudioUploadAbort(uploadId)`. Uploads are limited to 2 MiB files, 16 KiB writes, two incomplete uploads per computer/speaker, 16 incomplete uploads server-wide, and 30 seconds without activity. Each write copies its read-only CC:T byte view immediately into HighAudio-owned memory; no `IArguments` or argument-backed buffer is retained.
+The implemented methods are `highAudioUploadBegin(size)`, `highAudioUploadWrite(uploadId, bytes)`, `highAudioUploadFinish(uploadId)`, and `highAudioUploadAbort(uploadId)`. Defaults are 64 MiB files, 64 KiB writes, four incomplete uploads per computer/speaker, 64 server-wide, and 60 seconds without activity. Each begin reserves its complete declared length against a 256 MiB default aggregate budget before allocation, and every completion/failure/abort/expiry/detach/shutdown path releases that reservation. Each write copies its read-only CC:T byte view immediately into HighAudio-owned memory; no `IArguments` or argument-backed buffer is retained.
 
 A bundled Lua helper can later provide:
 
@@ -224,7 +224,7 @@ Transport rules:
 - cancel stale transfers;
 - do not add per-chunk ACK round trips unless measurement justifies them.
 
-M4 implements only `Play`, `Stop`, `ContentRequest`, `ContentBegin`, ordered `ContentChunk`, `ContentEnd`, and `ContentUnavailable`. A client requests bytes only on a cache miss. The server verifies that the requester is still in the authoritative session audience and sends each client/session at most once. Chunks are 32 KiB, far below the NeoForge clientbound payload ceiling. Client assembly is limited to four transfers and 8 MiB total, validates ordering/length/SHA-256, and cancels stale transfers on replacement/stop/logout/reload.
+M4 implements only `Play`, `Stop`, `ContentRequest`, `ContentBegin`, ordered `ContentChunk`, `ContentEnd`, and `ContentUnavailable`. A client requests bytes only on a cache miss. The server verifies that the requester is still in the authoritative session audience and sends each client/session at most once. Transfer chunks default to 32 KiB and are configurable below a fixed packet-safe ceiling. Client assembly defaults to eight transfers and 128 MiB total, validates ordering/length/SHA-256, and cancels stale transfers on replacement/stop/logout/reload.
 
 ## 11. Audience and recovery — Planned
 
